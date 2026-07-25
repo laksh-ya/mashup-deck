@@ -1,0 +1,15 @@
+# Every version is exact, so a build today and a build in six months install
+# the same thing. Python itself is pinned in the Dockerfile (3.11.9) and in
+# .python-version, so those cannot drift apart either.
+#
+# You should not need to touch this file.
+
+fastapi==0.140.0
+uvicorn[standard]==0.51.0
+pydub==0.25.1
+
+# This is a floor, not a ceiling. docker-entrypoint.sh upgrades yt-dlp to the
+# current release every time the container starts, because YouTube changes how
+# it serves audio every few weeks and an old copy stops downloading. The pin
+# below is the fallback used when PyPI cannot be reached.
+yt-dlp==2026.7.4

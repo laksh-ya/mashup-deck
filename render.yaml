@@ -1,0 +1,36 @@
+# Render blueprint. Point Render at this repo and it configures the service
+# itself: no dashboard settings, no prompts, no values to fill in.
+#
+#   render.com -> New -> Blueprint -> pick this repo -> Apply
+#
+# Free plan spins down after 15 minutes idle, so the first visit after a quiet
+# spell waits about a minute while the container wakes.
+
+services:
+  - type: web
+    name: mashup-deck
+    runtime: docker
+    plan: free
+    region: singapore          # closest to India; oregon / frankfurt also work
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit
+
+    envVars:
+      # Pull the current yt-dlp on each container start. This is what keeps the
+      # app working for months without you touching anything, because YouTube
+      # changes often enough to break an old copy. Set to 0 to pin it instead.
+      - key: YTDLP_AUTO_UPDATE
+        value: "1"
+
+      # How long scratch files live. The defaults already keep the disk bounded;
+      # they are spelled out here so they are easy to find if you ever care.
+      - key: DOWNLOAD_TTL_MIN
+        value: "30"
+      - key: OUTPUT_TTL_MIN
+        value: "90"
+      - key: MAX_DOWNLOAD_MB
+        value: "400"
+      - key: MAX_OUTPUT_MB
+        value: "150"

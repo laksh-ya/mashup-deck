@@ -1,0 +1,17 @@
+# scratch space, created at runtime and cleaned by janitor.py
+downloads/
+outputs/
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# local only
+.env
+cookies.txt
+.vscode/
+.idea/
+.DS_Store
+node_modules/

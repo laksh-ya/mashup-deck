@@ -1,0 +1,17 @@
+# keep the build context small and free of local junk
+.git/
+.gitignore
+.venv/
+venv/
+__pycache__/
+*.pyc
+.vscode/
+.idea/
+.DS_Store
+node_modules/
+downloads/
+outputs/
+cookies.txt
+.env
+README.md
+render.yaml

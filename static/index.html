@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mashup Deck</title>
+<meta name="description" content="Say which bits of which songs you want. Get one mp3." />
+<meta name="theme-color" content="#140f0c" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><circle cx=%2250%22 cy=%2250%22 r=%2248%22 fill=%22%23140f0c%22/><circle cx=%2250%22 cy=%2250%22 r=%2232%22 fill=%22none%22 stroke=%22%23ff7a2f%22 stroke-width=%223%22/><circle cx=%2250%22 cy=%2250%22 r=%2210%22 fill=%22%23ffc247%22/></svg>" />
+<link rel="preload" href="/fonts/shrikhand-400-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="/fonts/baloo-2-400-800-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="/fonts/caveat-400-700-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="stylesheet" href="/fonts.css" />
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+
+<!-- the room: rotating vinyl, moving light, audio-reactive spectrum -->
+<canvas id="stage" aria-hidden="true"></canvas>
+<div class="grain" aria-hidden="true"></div>
+
+<div class="console">
+
+  <!-- ══ top plate ══ -->
+  <div class="plate">
+    <span class="screw tl" aria-hidden="true"></span>
+    <span class="screw tr" aria-hidden="true"></span>
+
+    <div class="plate-main">
+      <div class="brass">
+        <span class="mark" aria-hidden="true"><i></i></span>
+        <h1 class="wordmark"><span>Mashup</span> <span>Deck</span></h1>
+      </div>
+      <p class="tagline-x">
+        <span class="tx-a">make</span>
+        <span class="tx-hot">mashups</span>
+        <span class="tx-a">from song links</span>
+        <svg class="underline" viewBox="0 0 220 12" preserveAspectRatio="none" aria-hidden="true">
+          <path d="M2 8 C 40 2, 70 10, 110 5 S 180 2, 218 7" />
+        </svg>
+      </p>
+    </div>
+
+    <button class="knob-btn" id="btn-info" aria-label="About this deck" aria-expanded="false">
+      <span class="knob-i">i</span>
+    </button>
+  </div>
+
+  <!-- ══ 1. the cue card ══ -->
+  <section class="bay" id="bay-write">
+    <div class="bay-head">
+      <span class="tab">1</span>
+      <h2>write it down</h2>
+      <span class="bay-note">song names are fine, links work too</span>
+    </div>
+
+    <div class="mode" role="group" aria-label="How to enter your clips">
+      <button class="mode-tab is-on" id="mode-write" aria-pressed="true">write it out</button>
+      <button class="mode-tab" id="mode-rows" aria-pressed="false">fill in boxes</button>
+    </div>
+
+    <div class="clipboard">
+      <div class="clip" aria-hidden="true"><i></i></div>
+      <label class="sr-only" for="cue-input">The clips you want</label>
+      <textarea id="cue-input" rows="7" spellcheck="false" wrap="soft"></textarea>
+    </div>
+
+    <!-- the other way in: a printed form, one line per song, no "then" needed -->
+    <div class="sheet" id="sheet" hidden>
+      <span class="sheet-punch" aria-hidden="true"></span>
+      <span class="sheet-punch two" aria-hidden="true"></span>
+      <p class="sheet-title">the cue sheet</p>
+      <p class="sheet-note">fill the blanks, or leave the times empty for a whole song</p>
+      <div class="sheet-head" aria-hidden="true">
+        <span>song or link</span><span>from</span><span>to</span><span></span>
+      </div>
+      <div class="sheet-rows" id="sheet-rows"></div>
+      <button class="sheet-add" id="sheet-add" type="button">
+        <span aria-hidden="true">+</span> one more song
+      </button>
+    </div>
+
+    <p class="say">
+      one clip per line, or separate with <b>then</b>. a plain song name works
+      too, it will go and find it on youtube.
+    </p>
+
+    <div class="sticker-row">
+      <span class="sticker-label">or grab one</span>
+      <div class="stickers" id="stickers"></div>
+    </div>
+
+    <div class="bay-foot">
+      <button class="push big" id="btn-read">
+        <span class="push-face">read the card</span>
+      </button>
+    </div>
+    <p class="warn" id="write-warn" hidden></p>
+  </section>
+
+  <!-- ══ 2. the rack ══ -->
+  <section class="bay off" id="bay-rack">
+    <div class="bay-head">
+      <span class="tab">2</span>
+      <h2>check the tape</h2>
+      <span class="bay-note" id="rack-note">drag to reorder, tap a time to change it</span>
+    </div>
+
+    <div class="rack" id="rack" role="list"></div>
+
+    <button class="add-slot" id="btn-add" hidden>
+      <span>+</span> add another clip
+    </button>
+
+    <div class="bench">
+      <div class="lcd">
+        <div class="lcd-row"><span>CLIPS</span><b id="n-clips">0</b></div>
+        <div class="lcd-row"><span>TOTAL</span><b id="n-total">0:00</b></div>
+        <div class="lcd-scan" aria-hidden="true"></div>
+      </div>
+
+      <div class="fader">
+        <span class="fader-cap">crossfade</span>
+        <div class="fader-slot">
+          <input type="range" id="fader" min="0" max="4000" step="100" value="0"
+                 aria-label="Crossfade between clips" />
+        </div>
+        <span class="fader-val mono" id="fader-val">off</span>
+      </div>
+    </div>
+
+    <div class="bay-foot">
+      <button class="push ghost" id="btn-back-write"><span class="push-face">back</span></button>
+      <button class="push big hot" id="btn-cut"><span class="push-face">cut the tape</span></button>
+    </div>
+  </section>
+
+  <!-- ══ 3. the deck ══ -->
+  <section class="bay off" id="bay-deck">
+    <div class="bay-head">
+      <span class="tab">3</span>
+      <h2 id="deck-title">rolling</h2>
+      <span class="bay-note" id="deck-note">this takes a minute, the tape is being cut</span>
+    </div>
+
+    <div class="tapedeck" id="tapedeck">
+      <span class="screw tl" aria-hidden="true"></span>
+      <span class="screw tr" aria-hidden="true"></span>
+      <span class="screw bl" aria-hidden="true"></span>
+      <span class="screw br" aria-hidden="true"></span>
+
+      <div class="window">
+        <div class="tape-path" aria-hidden="true"></div>
+        <svg class="reel left" viewBox="0 0 100 100" aria-hidden="true">
+          <circle class="rim" cx="50" cy="50" r="47" />
+          <g class="hubgrp">
+            <circle class="hub" cx="50" cy="50" r="16" />
+            <g class="teeth">
+              <rect x="46" y="6" width="8" height="26" rx="4" />
+              <rect x="46" y="68" width="8" height="26" rx="4" />
+              <rect x="6" y="46" width="26" height="8" rx="4" />
+              <rect x="68" y="46" width="26" height="8" rx="4" />
+            </g>
+          </g>
+          <circle class="spool" cx="50" cy="50" r="30" />
+        </svg>
+        <svg class="reel right" viewBox="0 0 100 100" aria-hidden="true">
+          <circle class="rim" cx="50" cy="50" r="47" />
+          <g class="hubgrp">
+            <circle class="hub" cx="50" cy="50" r="16" />
+            <g class="teeth">
+              <rect x="46" y="6" width="8" height="26" rx="4" />
+              <rect x="46" y="68" width="8" height="26" rx="4" />
+              <rect x="6" y="46" width="26" height="8" rx="4" />
+              <rect x="68" y="46" width="26" height="8" rx="4" />
+            </g>
+          </g>
+          <circle class="spool spool-b" cx="50" cy="50" r="18" />
+        </svg>
+      </div>
+
+      <div class="meters">
+        <div class="vu">
+          <svg viewBox="0 0 120 62" aria-hidden="true">
+            <path class="vu-arc" d="M12 54 A 48 48 0 0 1 108 54" />
+            <path class="vu-arc hotzone" d="M84 22 A 48 48 0 0 1 108 54" />
+            <g class="needle" id="needle-l"><line x1="60" y1="54" x2="60" y2="14" /></g>
+            <circle class="vu-pin" cx="60" cy="54" r="4" />
+          </svg>
+          <span class="vu-tag">L</span>
+        </div>
+
+        <div class="deck-mid">
+          <div class="counter-set">
+            <div class="counter mono" id="counter">000</div>
+            <div class="nowbar" id="nowbar" hidden>
+              <span class="now-k">now playing</span>
+              <span class="now-v" id="now-title"></span>
+            </div>
+          </div>
+          <div class="rail"><div class="rail-fill" id="rail-fill"></div></div>
+          <p class="deck-msg" id="deck-msg" role="status" aria-live="polite">standing by</p>
+        </div>
+
+        <div class="vu">
+          <svg viewBox="0 0 120 62" aria-hidden="true">
+            <path class="vu-arc" d="M12 54 A 48 48 0 0 1 108 54" />
+            <path class="vu-arc hotzone" d="M84 22 A 48 48 0 0 1 108 54" />
+            <g class="needle" id="needle-r"><line x1="60" y1="54" x2="60" y2="14" /></g>
+            <circle class="vu-pin" cx="60" cy="54" r="4" />
+          </svg>
+          <span class="vu-tag">R</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- finished -->
+    <div id="done" hidden>
+      <p class="note-skipped" id="skipped" hidden></p>
+      <div class="cassette" id="cassette">
+        <div class="cass-label">
+          <span class="cass-side">A</span>
+          <input class="cass-title" id="mix-name" value="my mashup" aria-label="Name this mix" spellcheck="false" />
+          <span class="cass-meta mono" id="mix-meta"></span>
+        </div>
+        <div class="cass-window" aria-hidden="true">
+          <span class="cass-reel"></span>
+          <span class="cass-reel"></span>
+        </div>
+      </div>
+
+      <div class="transport">
+        <button class="tbtn play" id="btn-play" aria-label="Play the mix">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path class="i-play" d="M8 5v14l11-7z" /><g class="i-pause"><rect x="7" y="5" width="3.6" height="14" rx="1.2"/><rect x="13.4" y="5" width="3.6" height="14" rx="1.2"/></g></svg>
+        </button>
+        <div class="scrub">
+          <div class="scrub-rail" id="scrub-rail">
+            <div class="seg-marks" id="seg-marks" aria-hidden="true"></div>
+            <div class="scrub-fill" id="scrub-fill"></div>
+          </div>
+          <div class="scrub-time mono"><span id="t-now">0:00</span><span id="t-end">0:00</span></div>
+        </div>
+        <a class="tbtn save" id="btn-save" download aria-label="Save the mp3">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0l-4.2-4.2M12 14l4.2-4.2M4 18.5h16"/></svg>
+        </a>
+      </div>
+      <audio id="audio" preload="metadata"></audio>
+
+      <div class="send-row">
+        <button class="send" id="btn-send">
+          <span class="send-word">send it to someone</span>
+          <span class="send-ring" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M4 12.5 20 5l-3 15-5.4-4.2L20 5"/></svg>
+            <svg class="send-scribble" viewBox="0 0 60 60" preserveAspectRatio="none" aria-hidden="true">
+              <path d="M30 4C46 4 57 14 56 30c-1 15-12 26-27 26C15 56 4 45 4 30 4 15 15 4.5 31 4.5" />
+            </svg>
+          </span>
+        </button>
+        <span class="send-said" id="send-said" hidden></span>
+      </div>
+
+      <div class="bay-foot">
+        <button class="push ghost" id="btn-edit"><span class="push-face">not quite, let me edit</span></button>
+        <button class="push" id="btn-fresh"><span class="push-face">start a new one</span></button>
+      </div>
+    </div>
+
+    <div id="jam" hidden>
+      <p class="warn" id="jam-msg"></p>
+      <div class="bay-foot">
+        <button class="push ghost" id="btn-jam-back"><span class="push-face">back to the tape</span></button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ jukebox ══ -->
+  <section class="juke" id="juke">
+    <div class="juke-top">
+      <h2 class="juke-title">Jukebox</h2>
+      <p class="juke-sub">nothing in mind? try one of these</p>
+    </div>
+
+    <div class="juke-body">
+      <div class="dome-set">
+        <button class="dome" id="btn-surprise" aria-label="Shuffle play a mix">
+          <span class="dome-glass" aria-hidden="true"></span>
+          <span class="dome-ring" aria-hidden="true"></span>
+          <svg class="dome-glyph" viewBox="0 0 32 32" aria-hidden="true">
+            <path d="M4 9h6.5l11 14H28" />
+            <path d="M4 23h6.5l11-14H28" />
+            <path d="M24.5 5.5 28 9l-3.5 3.5" />
+            <path d="M24.5 19.5 28 23l-3.5 3.5" />
+          </svg>
+          <span class="dome-led" aria-hidden="true"></span>
+        </button>
+        <span class="dome-plate">shuffle play</span>
+      </div>
+
+      <div class="juke-pick">
+        <div class="juke-cards" id="juke-cards"></div>
+        <button class="juke-more" id="btn-juke-more" aria-expanded="false" aria-controls="juke-cards">
+          <span class="juke-more-t">more mixes</span>
+          <span class="juke-more-c" id="juke-count"></span>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <footer class="rail-foot">
+    <button class="credits" id="btn-credits">credits</button>
+  </footer>
+
+</div>
+
+<!-- ══ about, over everything ══ -->
+<div class="scrim" id="scrim" hidden>
+  <div class="sleeve" id="sleeve" role="dialog" aria-modal="true" aria-labelledby="about-name">
+    <span class="sleeve-hole" aria-hidden="true"></span>
+    <button class="sleeve-x" id="btn-about-close" aria-label="Close">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+    </button>
+
+    <div class="sleeve-disc" aria-hidden="true"><span></span></div>
+
+    <div class="sleeve-logo">
+      <span class="mark big" aria-hidden="true"><i></i></span>
+      <div class="sleeve-lock">
+        <h2 class="sleeve-name" id="about-name">Mashup Deck</h2>
+        <p class="sleeve-tag">make mashups from song links</p>
+      </div>
+    </div>
+
+
+    <h3 class="sleeve-made">
+      made by
+      <a class="signature" href="https://github.com/Laksh-ya" target="_blank" rel="noopener">
+        <span class="sig-ink">Lakshya</span>
+        <svg class="sig-line" viewBox="0 0 260 22" preserveAspectRatio="none" aria-hidden="true">
+          <path d="M4 15C38 5 74 18 110 9s70-6 104 6" />
+        </svg>
+      </a>
+    </h3>
+
+    <p class="sleeve-ded">
+      for all the cousins, didis, bhaiyas and friends who kept asking me to cut a
+      mashup for a sangeet, a party or some event. this one does it in a couple of
+      minutes.
+    </p>
+
+    <p class="sleeve-ask">for any queries or improvements, hit me up at</p>
+
+    <div class="sleeve-row">
+      <a class="tag" id="link-github" href="https://github.com/Laksh-ya" target="_blank" rel="noopener" aria-label="GitHub">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.89 1.53 2.34 1.09 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.56-1.11-4.56-4.95 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.4 9.4 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.85-2.34 4.7-4.57 4.95.36.31.68.92.68 1.85v2.74c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/></svg>
+      </a>
+      <a class="tag" id="link-mail" href="mailto:lakshya@duck.com?subject=Mashup%20Deck" aria-label="Email">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.6" y="5" width="18.8" height="14" rx="2.4"/><path d="m3.4 6.6 8.6 6.2 8.6-6.2"/></svg>
+      </a>
+      <button class="tag" id="link-share" aria-label="Share this">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5.5" r="2.6"/><circle cx="6" cy="12" r="2.6"/><circle cx="18" cy="18.5" r="2.6"/><path d="m8.3 10.7 7.4-3.9m0 10.4-7.4-3.9"/></svg>
+      </button>
+
+      <button class="tag sfx" id="btn-mute" aria-pressed="false" aria-label="Mute the button sounds">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path class="spk" d="M4 9h3.5L12 5v14l-4.5-4H4z"/>
+          <g class="waves"><path d="M15.5 9.2a4 4 0 0 1 0 5.6"/><path d="M18 6.8a7.5 7.5 0 0 1 0 10.4"/></g>
+          <g class="cross"><path d="M15.5 9.5l5 5m0-5l-5 5"/></g>
+        </svg>
+      </button>
+    </div>
+
+    <p class="sleeve-toast" id="share-toast" hidden>link copied</p>
+  </div>
+</div>
+
+<template id="strip-tmpl">
+  <div class="strip" role="listitem">
+    <button class="grip" aria-label="Reorder this clip. Hold and drag, or use the arrow keys.">
+      <span></span><span></span><span></span>
+    </button>
+    <div class="photo">
+      <!-- no loading="lazy" here: the slot starts covered by the placeholder and
+           browsers skip lazy images that are not being rendered -->
+      <img alt="" decoding="async" referrerpolicy="no-referrer" />
+      <span class="photo-load" aria-hidden="true"><i></i></span>
+      <span class="tape-bit tb1"></span><span class="tape-bit tb2"></span>
+    </div>
+    <div class="strip-body">
+      <h3 class="strip-title"></h3>
+      <div class="strip-times">
+        <label>in <input type="text" class="t-in mono" inputmode="numeric" /></label>
+        <label>out <input type="text" class="t-out mono" inputmode="numeric" /></label>
+        <span class="strip-len mono"></span>
+        <button class="hear" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+          hear it
+        </button>
+      </div>
+
+      <div class="scope">
+        <span class="scope-sel"></span>
+        <button class="scope-h h-in" type="button" aria-label="Drag to move the start, or use the arrow keys"></button>
+        <button class="scope-h h-out" type="button" aria-label="Drag to move the end, or use the arrow keys"></button>
+      </div>
+
+      <div class="peek" hidden>
+        <div class="peek-frame"></div>
+        <div class="peek-foot">
+          <span class="peek-note">playing straight from YouTube, just this bit</span>
+          <button class="peek-close" type="button">close</button>
+        </div>
+      </div>
+    </div>
+    <button class="toss" aria-label="Remove this clip">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7h12M9 7V5h6v2m-8 0 1 12h8l1-12"/></svg>
+    </button>
+  </div>
+</template>
+
+<script type="module" src="/js/app.js"></script>
+</body>
+</html>
