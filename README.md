@@ -246,7 +246,3 @@ It prints the link to open on the phone:
 ```
 
 Both devices on the same wifi, and allow it the first time the firewall asks.
-
-<p align="center">
-  Made by <a href="https://github.com/Laksh-ya">Lakshya</a>
-</p>
