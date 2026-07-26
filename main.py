@@ -1,5 +1,6 @@
 import os
 import re
+import sys
 import uuid
 import threading
 import traceback
@@ -258,7 +259,7 @@ app.mount('/', StaticFiles(directory=static_dir, html=True), name='static')
 # what makes macOS ask whether to accept incoming connections and makes Windows
 # Firewall pop a permission dialog. Neither says anything about 127.0.0.1.
 # MASHUP_LAN=1 opts in, which is how a phone on the same wifi reaches a laptop.
-LAN = os.environ.get('MASHUP_LAN') == '1'
+LAN = os.environ.get('MASHUP_LAN') == '1' or '--lan' in sys.argv
 PREFERRED_PORT = int(os.environ.get('PORT') or 8765)
 
 
@@ -276,17 +277,60 @@ def _free_port() -> int:
     return PREFERRED_PORT
 
 
-def _lan_address() -> str:
-    """This machine's address on the local network, for the phone case."""
+def _lan_addresses() -> list:
+    """This machine's addresses on the local network, best guess first.
+
+    The usual trick of asking which interface would reach the internet is not
+    enough: with a VPN connected it answers with the VPN's address, and a phone on
+    the wifi cannot reach that. So candidates are collected from the routing
+    table, from the hostname, and from the OS's own listing, then ranked by which
+    private range they are in. Home wifi is almost always 192.168.x.x, VPNs and
+    virtual adapters are usually 10.x or 172.16-31.x, so that ordering puts the
+    address a phone can actually open first.
+    """
+    import re
     import socket
+    import subprocess
+
+    found = []
 
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
         try:
-            # nothing is sent; this only asks which interface would be used
-            s.connect(('8.8.8.8', 53))
-            return s.getsockname()[0]
+            s.connect(('8.8.8.8', 53))       # nothing is sent
+            found.append(s.getsockname()[0])
         except OSError:
-            return '127.0.0.1'
+            pass
+
+    try:
+        found += socket.gethostbyname_ex(socket.gethostname())[2]
+    except OSError:
+        pass
+
+    listing = {'darwin': ['ifconfig'], 'win32': ['ipconfig']}.get(
+        sys.platform, ['ip', '-4', 'addr'])
+    try:
+        out = subprocess.run(listing, capture_output=True, text=True, timeout=4).stdout
+        found += re.findall(r'\b(?:inet |IPv4 Address[^:]*:\s*)(\d+\.\d+\.\d+\.\d+)', out)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+    def rank(ip: str) -> int:
+        if ip.startswith('192.168.'):
+            return 0
+        if ip.startswith('10.'):
+            return 1
+        if re.match(r'172\.(1[6-9]|2\d|3[01])\.', ip):
+            return 2
+        return 3
+
+    private = []
+    for ip in found:
+        if ip.startswith('127.') or ip.startswith('169.254.'):
+            continue
+        if rank(ip) < 3 and ip not in private:
+            private.append(ip)
+
+    return sorted(private, key=rank)
 
 
 def _announce(port: int) -> None:
@@ -308,7 +352,15 @@ def _announce(port: int) -> None:
 
     print(f'\n  Mashup Deck is ready:  {url}')
     if LAN:
-        print(f'  On a phone on the same wifi:  http://{_lan_address()}:{port}')
+        addresses = _lan_addresses()
+        if addresses:
+            print(f'  Open this on your phone:  http://{addresses[0]}:{port}')
+            # more than one private address means a VPN or virtual adapter is up
+            # and the guess above might be the wrong one, so offer the others
+            for other in addresses[1:]:
+                print(f'                or:       http://{other}:{port}')
+        else:
+            print('  No network address found, so a phone cannot reach this.')
     print('\n  Everything happens on this computer. Close this window when done.\n')
 
     if os.environ.get('MASHUP_NO_BROWSER') != '1':

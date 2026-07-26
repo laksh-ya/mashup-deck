@@ -207,9 +207,14 @@ $env:MASHUP_LAN=1; & "$HOME\Desktop\Mashup Deck.cmd"
 MASHUP_LAN=1 sh ~/Desktop/"Mashup Deck.command"
 ```
 
-It prints two addresses. The second one, `http://192.168.x.x:8765`, is the one to
-open on the phone. Both devices have to be on the same wifi, and the firewall asks
-permission the first time, which is expected: allow it.
+It prints the link to open on the phone:
+
+```
+  Open this on your phone:  http://192.168.29.112:8765
+```
+
+Both devices have to be on the same wifi, and the firewall asks permission the
+first time, which is expected: allow it.
 
 ---
 
@@ -244,42 +249,23 @@ uvicorn main:app --reload --port 8000
 Open http://localhost:8000. `Ctrl-C` stops it. `--reload` restarts the server
 whenever you save a file, so leave it on while you work.
 
-Another day, only the last two lines are needed. Or the whole thing at once:
-
-```bash
-python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && uvicorn main:app --reload --port 8000
-```
-
 ### Use it from your phone
 
-Three steps, both devices on the same wifi.
-
-**1. Start it for the whole network** instead of only this computer:
+One command. It prints a link to open on the phone:
 
 ```bash
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+python main.py --lan
 ```
 
-The first time, macOS or Windows asks whether to allow incoming connections.
-Allow it, otherwise the phone cannot reach it.
-
-**2. Find this computer's address on the wifi:**
-
-```bash
-ipconfig getifaddr en0     # macOS, prints something like 192.168.29.112
-hostname -I                # Linux, first address in the list
-ipconfig                   # Windows, the "IPv4 Address" line
+```
+  Mashup Deck is ready:  http://127.0.0.1:8765
+  Open this on your phone:  http://192.168.29.112:8765
 ```
 
-**3. On the phone**, open that address with `:8000` after it:
-
-```
-http://192.168.29.112:8000
-```
-
-Keep the terminal running the whole time; closing it stops the server. The address
-changes when you rejoin the wifi or move to a different network, so check step 2
-again if the phone stops finding it.
+Both devices on the same wifi, and allow it the first time the firewall asks. Keep
+the terminal open, since closing it stops the server. If more than one address is
+printed, the first is the usual one; the others are there because a VPN or a
+virtual adapter is running.
 
 ---
 
