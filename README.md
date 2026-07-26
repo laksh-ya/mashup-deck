@@ -220,52 +220,33 @@ first time, which is expected: allow it.
 
 ## Build it yourself
 
-Needs **Python 3.11 or newer** and **ffmpeg**:
+Needs **Python 3.11 or newer**, and ffmpeg:
+`brew install ffmpeg` / `sudo apt install ffmpeg` / `winget install ffmpeg`
 
 ```bash
-brew install ffmpeg          # macOS
-sudo apt install ffmpeg      # Linux
-winget install ffmpeg        # Windows
+python3 -m venv .venv                    # 1. make the venv    (windows: py -m venv .venv)
+source .venv/bin/activate                # 2. start the venv   (windows: .venv\Scripts\activate)
+pip install -r requirements.txt          # 3. install
+uvicorn main:app --reload --port 8000    # 4. run it
 ```
 
-**macOS and Linux**, in the project folder:
+Open http://localhost:8000. `Ctrl-C` stops it, and `--reload` picks up your edits
+as you save.
 
-```bash
-python3 -m venv .venv                        # make the venv
-source .venv/bin/activate                    # start the venv
-pip install -r requirements.txt              # install
-uvicorn main:app --reload --port 8000        # run
-```
-
-**Windows**, same thing with two lines changed:
-
-```powershell
-py -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-uvicorn main:app --reload --port 8000
-```
-
-Open http://localhost:8000. `Ctrl-C` stops it. `--reload` restarts the server
-whenever you save a file, so leave it on while you work.
-
-### Use it from your phone
-
-One command. It prints a link to open on the phone:
+To use it from your phone, run step 4 as this instead:
 
 ```bash
 python main.py --lan
 ```
 
+It prints the link to open on the phone:
+
 ```
-  Mashup Deck is ready:  http://127.0.0.1:8765
   Open this on your phone:  http://192.168.29.112:8765
 ```
 
-Both devices on the same wifi, and allow it the first time the firewall asks. Keep
-the terminal open, since closing it stops the server. If more than one address is
-printed, the first is the usual one; the others are there because a VPN or a
-virtual adapter is running.
+Both devices on the same wifi, and allow it the first time the firewall asks.
 
----
-
+<p align="center">
+  Made by <a href="https://github.com/Laksh-ya">Lakshya</a>
+</p>
