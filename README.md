@@ -223,10 +223,10 @@ python main.py                       # 5. run it
 Step 5 picks a free port and opens your browser. `Ctrl-C` stops it, `deactivate`
 leaves the venv. Next time it is only steps 3 and 5.
 
-All five in one go:
+All of it in one go:
 
 ```bash
-python3 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt && .venv/bin/python main.py
+python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && python main.py
 ```
 
 While editing code you want reload instead, which means naming the port yourself:

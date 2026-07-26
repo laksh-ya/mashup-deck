@@ -6,10 +6,23 @@ import traceback
 from contextlib import asynccontextmanager
 from typing import List, Optional
 
-from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel
+try:
+    from fastapi import FastAPI
+    from fastapi.staticfiles import StaticFiles
+    from fastapi.responses import FileResponse, JSONResponse
+    from pydantic import BaseModel
+except ModuleNotFoundError as missing:
+    # Running this without setting anything up first is the most likely mistake,
+    # so say what to do instead of printing a traceback about fastapi.
+    raise SystemExit(
+        f'\n  {missing.name} is not installed, so the dependencies are missing.\n\n'
+        '  Set it up once:\n\n'
+        '      python3 -m venv .venv\n'
+        '      source .venv/bin/activate        (Windows: .venv\\Scripts\\activate)\n'
+        '      pip install -r requirements.txt\n\n'
+        '  then:\n\n'
+        '      python main.py\n'
+    )
 
 import janitor
 import paths
