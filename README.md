@@ -12,6 +12,7 @@
   <a href="#how-it-works">How it works</a> ·
   <a href="#built-with">Built with</a> ·
   <a href="#run-it">Run it</a> ·
+  <a href="#build-it-yourself">Build it yourself</a> ·
   <a href="DOCUMENTATION.md">Documentation</a>
 </p>
 
@@ -157,7 +158,6 @@ drops you on the trim screen, so you can still change it before cutting.
 | **Sound** | [cuelume](https://cuelume-site.pages.dev) |
 | **Haptics** | [web-haptics](https://haptics.lochie.me) |
 | **Install** | one command, `uv` for Python, static ffmpeg |
-| **Deploy** | Docker, optional |
 
 No bundler, no node_modules, no CSS framework. The whole frontend is
 `index.html`, one stylesheet and six ES modules.
@@ -166,17 +166,9 @@ No bundler, no node_modules, no CSS framework. The whole frontend is
 
 ## Run it
 
-### Anyone, one command
+### Windows
 
-Nothing has to be installed first, not even Python.
-
-**macOS and Linux** — paste into Terminal:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Laksh-ya/mashup-deck/main/install.sh | sh
-```
-
-**Windows** — paste into PowerShell:
+Needs nothing installed. Paste into **PowerShell**:
 
 ```powershell
 irm https://raw.githubusercontent.com/Laksh-ya/mashup-deck/main/install.ps1 | iex
@@ -184,70 +176,85 @@ irm https://raw.githubusercontent.com/Laksh-ya/mashup-deck/main/install.ps1 | ie
 
 Then double-click **Mashup Deck** on the Desktop. The browser opens on its own.
 
-It brings its own Python and its own ffmpeg, asks for no password, adds nothing to
-`PATH`, and shows no security warning. To uninstall, delete the Desktop file and
-one folder: `~/.mashup-deck`, or `%LOCALAPPDATA%\MashupDeck` on Windows.
-[Why it is built that way](DOCUMENTATION.md#handing-it-to-someone-else).
+Uninstall: delete the Desktop file and the folder `%LOCALAPPDATA%\MashupDeck`.
 
-Rather read the script before running it:
+### macOS and Linux
+
+Needs nothing installed. Paste into **Terminal**:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Laksh-ya/mashup-deck/main/install.sh -o install.sh
-less install.sh
-sh install.sh
+curl -fsSL https://raw.githubusercontent.com/Laksh-ya/mashup-deck/main/install.sh | sh
 ```
 
-### From the repo
+Then double-click **Mashup Deck** on the Desktop. The browser opens on its own.
 
-Needs Python 3.11 or newer, and ffmpeg:
-`brew install ffmpeg` · `apt install ffmpeg` · `winget install ffmpeg`.
+Uninstall: delete the Desktop file and the folder `~/.mashup-deck`.
+
+### Using it from a phone
+
+The installed copy only listens to its own machine. To let a phone on the same
+wifi use it, start it with `MASHUP_LAN=1` instead of double-clicking.
+
+**Windows**, in PowerShell:
+
+```powershell
+$env:MASHUP_LAN=1; & "$HOME\Desktop\Mashup Deck.cmd"
+```
+
+**macOS and Linux**, in Terminal:
+
+```bash
+MASHUP_LAN=1 sh ~/Desktop/"Mashup Deck.command"
+```
+
+It prints two addresses. The second one, `http://192.168.x.x:8765`, is the one to
+open on the phone. Both devices have to be on the same wifi, and the firewall asks
+permission the first time, which is expected: allow it.
+
+---
+
+## Build it yourself
+
+Needs **Python 3.11 or newer** and **ffmpeg**:
+
+```bash
+brew install ffmpeg          # macOS
+sudo apt install ffmpeg      # Linux
+winget install ffmpeg        # Windows
+```
+
+Then, in the project folder:
 
 ```bash
 python3 -m venv .venv               # make the venv
-source .venv/bin/activate           # go into it
-pip install -r requirements.txt     # install the dependencies
-python main.py                      # run it
+source .venv/bin/activate           # start the venv
+pip install -r requirements.txt     # install
+uvicorn main:app --port 8000        # run
 ```
 
-Or all four at once:
+Open http://localhost:8000. `Ctrl-C` stops it.
+
+On Windows the middle two are `py -m venv .venv` and `.venv\Scripts\activate`;
+the rest is identical.
+
+### Other ways to run it
+
+| when you want to | command |
+| --- | --- |
+| start it again another day | `source .venv/bin/activate` then `uvicorn main:app --port 8000` |
+| do the whole setup in one line | `python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && uvicorn main:app --port 8000` |
+| have it restart when you save | `uvicorn main:app --reload --port 8000` |
+| skip picking a port, open the browser too | `python main.py` |
+| use it from your phone | `uvicorn main:app --host 0.0.0.0 --port 8000` |
+
+For the phone case, get this machine's address and open `http://that-address:8000`
+on the phone. Same wifi for both, and allow it when the firewall asks.
 
 ```bash
-python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && python main.py
+ipconfig getifaddr en0     # macOS
+hostname -I                # Linux
+ipconfig                   # Windows, the IPv4 Address line
 ```
-
-`python main.py` picks a free port and opens the browser. `Ctrl-C` stops it,
-`deactivate` leaves the venv. After the first time, only `source` and `python`
-are needed. While editing code, use reload instead:
-
-```bash
-uvicorn main:app --reload --port 8000
-```
-
-On Windows: `py -m venv .venv`, then `.venv\Scripts\activate`, then the same last
-two commands.
-
-### Good to know
-
-- **No cookies, no configuration.** It downloads over the connection of whichever
-  machine it runs on, and home connections are not blocked by YouTube. A server is
-  a different story, below.
-- **Phones and tablets** can use a computer's copy: start it with `MASHUP_LAN=1`
-  and it prints a second address for anything on the same wifi. That is the one
-  time the firewall asks permission.
-- **If `pip` or `uvicorn` says "no such file or directory"** inside the venv, it
-  was copied from another folder or the folder was renamed, and those wrappers
-  hard code a path to their Python. Delete `.venv` and make it again.
-
-### On a server, if you insist
-
-**YouTube refuses cloud IP addresses.** Every download from a fresh Render deploy
-fails with *"sign in to confirm you're not a bot"*, and the only way past it is a
-cookie file from a throwaway account, re-exported every few weeks. That is the
-whole reason the one command install exists.
-
-Still want it? render.com → **New** → **Blueprint** → pick the repo → **Apply**,
-then add `YTDLP_COOKIES_B64` in the dashboard.
-[How to export cookies without immediately invalidating them](DOCUMENTATION.md#blocked-downloads).
 
 ---
 
