@@ -126,37 +126,19 @@ background effect was the wrong trade. The cloth effect was written from scratch
 as a Verlet mass-spring simulation instead, and later removed entirely because it
 looked wrong for the product.
 
-### One note if you ever use Hugging Face Spaces
-
-A Space reads its configuration from a YAML block at the very top of `README.md`.
-That block was removed so the README looks right on GitHub. If you deploy to a
-Space, paste this back above the first line:
-
-```yaml
----
-title: Mashup Deck
-emoji: "🎧"
-colorFrom: orange
-colorTo: red
-sdk: docker
-app_port: 7860
-pinned: false
----
-```
-
-Nothing else about the repo changes; the same Dockerfile works on both.
-
 ### Docker, not a native runtime
 
 pydub is a wrapper around ffmpeg, and ffmpeg is an apt package. Render's native
 Python runtime cannot install one, so the container is not a preference, it is a
-requirement. The same image runs on Render, Hugging Face Spaces, Railway, Koyeb,
-Fly and a laptop, because the entrypoint reads `$PORT` and falls back to 7860.
+requirement. That is the only reason `Dockerfile`, `docker-entrypoint.sh` and
+`.dockerignore` exist: `render.yaml` says `runtime: docker`, so deleting them
+means deleting the deploy. Nothing about running this locally touches them.
 
 ### Everything pinned except yt-dlp
 
 Exact versions everywhere, so a build today and a build next year install the
-same thing. Python is pinned in the Dockerfile **and** `.python-version`.
+same thing. Python is pinned in the Dockerfile, and the installer asks `uv` for
+3.11 explicitly.
 
 yt-dlp is the deliberate exception. YouTube changes how it serves audio every few
 weeks, and a pinned yt-dlp stops downloading within a month or two. That is what
@@ -377,7 +359,7 @@ Downloaded audio and finished mixes are both throwaway, and without management
 | `MAX_DOWNLOAD_MB` | `400` | hard cap, oldest deleted first |
 | `MAX_OUTPUT_MB` | `150` | hard cap, oldest deleted first |
 | `SWEEP_EVERY_MIN` | `5` | background sweep interval |
-| `PORT` | `7860` container, `8765` local | set by the host, or preferred by `run.py` |
+| `PORT` | `7860` container, `8765` local | set by the host, or preferred by `main.py` |
 | `DATA_DIR` | app dir | where scratch lives |
 | `MASHUP_LAN` | unset | bind every interface so phones on the wifi can reach it |
 | `YTDLP_COOKIEFILE` | unset | path to a cookie file |
@@ -410,9 +392,10 @@ so the boot log says so rather than leaving it to be found one failed export
 later. This is the reason the app ships as a one command local install instead of
 a hosted link.
 
-Cookies are the escape hatch, and `cookies.py` exists because supplying them on a
-free host is more awkward than it sounds. No shell, no persistent disk, and the
-file must never reach the repo, so four sources are accepted in order:
+Cookies are the escape hatch, and the cookie section of `youtube.py` is longer than
+you would expect because supplying them on a free host is awkward. No shell, no
+persistent disk, and the file must never reach the repo, so four sources are
+accepted in order:
 `YTDLP_COOKIEFILE`, `/etc/secrets/cookies.txt` (a Render Secret File),
 `./cookies.txt`, and `YTDLP_COOKIES_B64` / `YTDLP_COOKIES`.
 
@@ -464,8 +447,10 @@ avoiding:
   downloads into mp3. On Apple Silicon the downloads are ad-hoc signed with
   `codesign --sign -`, because an unsigned binary there dies as `Killed: 9` with
   no explanation.
-* **`run.py` does the launching**, so the `.command` and the `.cmd` are three
-  lines each and there is one code path shared with development.
+* **`python main.py` does the launching**, so the `.command` and the `.cmd` are
+  three lines each and there is one code path shared with development. It picks a
+  free port, waits for the server to answer, then opens the browser, none of which
+  a person double-clicking an icon should have to do by hand.
 * **Loopback only.** Binding every interface is what triggers the macOS incoming
   connections prompt and the Windows Firewall dialog. `MASHUP_LAN=1` opts in, for
   the case where a phone on the same wifi should reach a laptop's copy.

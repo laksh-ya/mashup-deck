@@ -136,7 +136,7 @@ say "  [4/4] putting a launcher on the Desktop"
 cat > "$LAUNCHER" <<LAUNCHER_EOF
 #!/bin/sh
 # Double-click to open Mashup Deck. Close this window to stop it.
-# Everything below is one line of real work; run.py does the rest.
+# Everything below is one line of real work; main.py does the rest.
 ROOT="$ROOT"
 export PATH="\$ROOT/tools:\$PATH"
 cd "\$ROOT/app"
@@ -150,7 +150,7 @@ printf '\n  Mashup Deck is starting up...\n\n'
 "\$ROOT/tools/uv" pip install --quiet --python "\$ROOT/.venv/bin/python" \\
   --upgrade yt-dlp >/dev/null 2>&1 || true
 
-exec "\$ROOT/.venv/bin/python" run.py
+exec "\$ROOT/.venv/bin/python" main.py
 LAUNCHER_EOF
 
 chmod +x "$LAUNCHER"

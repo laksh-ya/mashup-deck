@@ -1,7 +1,4 @@
-<!-- Drop a hero screenshot here -->
-<p align="center">
-  <img src="docs/hero.png" alt="Mashup Deck" width="820">
-</p>
+<!-- screenshots: drop hero.png here once you have one -->
 
 <h1 align="center">Mashup Deck</h1>
 
@@ -37,9 +34,6 @@ Song names get searched. Links work with or without `https://`, including
 `youtu.be`, `watch?v=`, `/shorts/`, `/live/` and extra parameters. Leave the
 times out, or write `full`, to keep a whole track.
 
-<!-- screenshot: step 1, the pad and the form side by side -->
-<img src="docs/step-1.png" alt="Writing the cue sheet" width="100%">
-
 ### Trim before you commit
 
 | | |
@@ -51,9 +45,6 @@ times out, or write `full`, to keep a whole track.
 | **Crossfade** | A real fader, off by default. |
 | **Add or drop** | Add a song without leaving the rack. |
 
-<!-- screenshot: step 2, the rack -->
-<img src="docs/step-2.png" alt="The rack" width="100%">
-
 ### Then it cuts the tape
 
 - Progress comes from the actual backend steps, not a timer
@@ -63,9 +54,6 @@ times out, or write `full`, to keep a whole track.
 - Each clip's stretch is drawn on the scrub bar, crossfade zones hatched
 - Share the finished mp3 as a file, so it lands in WhatsApp playable
 - Not happy? Edit the trims and cut it again
-
-<!-- screenshot: step 3, the deck and the finished cassette -->
-<img src="docs/step-3.png" alt="The tape deck" width="100%">
 
 ### The room reacts
 
@@ -78,9 +66,6 @@ gets busier while a tape is being cut.
 
 Eight ready mixes for when you have nothing in mind. Shuffle play picks one and
 drops you on the trim screen, so you can still change it before cutting.
-
-<!-- screenshot: the jukebox -->
-<img src="docs/jukebox.png" alt="The jukebox" width="100%">
 
 ### Details
 
@@ -145,12 +130,10 @@ drops you on the trim screen, so you can still change it before cutting.
 
 | path | does |
 | --- | --- |
-| `run.py` | starts it, picks a port, opens the browser |
+| `main.py` | routes, job tracker, filename handling, and `python main.py` to start it |
 | `install.sh` / `install.ps1` | one command setup on a machine with nothing installed |
-| `main.py` | routes, job tracker, filename handling |
 | `parser.py` | plain English into clips, regex only |
-| `youtube.py` | yt-dlp lookups and downloads, retries, fallback clients |
-| `cookies.py` | finds a cookie file, only needed on a server |
+| `youtube.py` | yt-dlp lookups and downloads, retries, fallback clients, cookies |
 | `audio.py` | trimming and crossfade merging |
 | `janitor.py` | keeps the scratch folders from growing forever |
 | `paths.py` | picks a writable scratch dir, falls back to temp |
@@ -202,6 +185,19 @@ you are cutting. No security warnings, no account, no admin rights, nothing adde
 to `PATH`. Everything lives in one folder you can delete: `~/.mashup-deck` on
 macOS and Linux, `%LOCALAPPDATA%\MashupDeck` on Windows.
 
+It is the five manual steps below, with the two "you already have this"
+assumptions removed: [`uv`](https://docs.astral.sh/uv/) brings its own Python
+because a fresh PC has none, and ffmpeg arrives as a single static binary because
+`brew install` assumes Homebrew, which is a several hundred megabyte download that
+wants a sudo password and does not exist on Windows.
+
+Prefer to read it before running it? Same thing, two steps:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Laksh-ya/mashup-deck/main/install.sh -o install.sh
+less install.sh && sh install.sh
+```
+
 It runs on the machine it is installed on, so it uses that connection to fetch
 audio. Home connections are not blocked by YouTube, which is why this needs no
 cookies and no configuration.
@@ -215,26 +211,36 @@ the firewall will ask for permission.
 Needs ffmpeg and Python 3.11 or newer.
 
 ```bash
-brew install ffmpeg                  # linux: apt install ffmpeg
+brew install ffmpeg                  # linux: apt install ffmpeg · windows: winget install ffmpeg
 
-python3 --version                    # check python is there
-python3 -m venv .venv                # make the venv
-source .venv/bin/activate            # go into it
-pip install -r requirements.txt      # install the dependencies
-uvicorn main:app --port 8000         # run it
+python3 --version                    # 1. check python is there
+python3 -m venv .venv                # 2. make the venv
+source .venv/bin/activate            # 3. go into it
+pip install -r requirements.txt      # 4. install the dependencies
+python main.py                       # 5. run it
 ```
 
-http://localhost:8000 · `Ctrl-C` to stop · `deactivate` to leave the venv.
+Step 5 picks a free port and opens your browser. `Ctrl-C` stops it, `deactivate`
+leaves the venv. Next time it is only steps 3 and 5.
 
-On Windows: `py -m venv .venv`, then `.venv\Scripts\activate`, then the same two
-commands. Add `--reload` to the uvicorn line while editing.
+All five in one go:
 
-Or skip the port and browser fiddling with `python run.py`, which picks a free
-port and opens the browser for you. That is what the Desktop launcher runs.
+```bash
+python3 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt && .venv/bin/python main.py
+```
 
-**If `pip` or `uvicorn` inside the venv fails with "no such file or directory",**
-the venv was copied or its folder was renamed. Those wrappers hard code an
-absolute path to their python. Delete `.venv` and redo the steps above.
+While editing code you want reload instead, which means naming the port yourself:
+
+```bash
+uvicorn main:app --reload --port 8000
+```
+
+On Windows swap step 2 for `py -m venv .venv` and step 3 for
+`.venv\Scripts\activate`.
+
+**If `pip` or `uvicorn` inside the venv says "no such file or directory",** the
+venv was copied from elsewhere or its folder was renamed; those wrappers hard code
+an absolute path to their python. Delete `.venv` and redo steps 2 to 4.
 
 ### Deploy to a server
 

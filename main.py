@@ -3,6 +3,7 @@ import re
 import uuid
 import threading
 import traceback
+from contextlib import asynccontextmanager
 from typing import List, Optional
 
 from fastapi import FastAPI
@@ -16,7 +17,15 @@ from parser import parse_text
 from youtube import resolve_clip, download_audio
 from audio import trim, merge_clips
 
-app = FastAPI(title="Mashup Deck")
+@asynccontextmanager
+async def lifespan(_app):
+    """Startup work. A lifespan rather than @app.on_event, which is deprecated
+    and prints a warning into the window a friend is looking at."""
+    _boot()
+    yield
+
+
+app = FastAPI(title="Mashup Deck", lifespan=lifespan)
 
 JOBS: dict = {}
 
@@ -187,7 +196,6 @@ def versions() -> dict:
     }
 
 
-@app.on_event('startup')
 def _boot():
     v = versions()
     print(f"[boot] python {v['python']} | yt-dlp {v['yt_dlp']} | ffmpeg {v['ffmpeg']}")
@@ -200,10 +208,105 @@ def _boot():
     # so warning about them there is noise in a window a friend is looking at.
     if v['cookies'] == 'none' and os.environ.get('MASHUP_LOCAL') != '1':
         print('[boot] WARNING: no cookie file. A cloud host will be refused by '
-              'YouTube with "sign in to confirm you\'re not a bot". See cookies.py')
+              'YouTube with "sign in to confirm you\'re not a bot". '
+              'See the cookies section in youtube.py')
     # clear out whatever a previous run left behind, then sweep on a timer
     janitor.start(JOBS)
 
 
 static_dir = os.path.join(os.path.dirname(__file__), 'static')
 app.mount('/', StaticFiles(directory=static_dir, html=True), name='static')
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Running it: `python main.py`
+#
+# This is here rather than in a separate launcher script so there is one way to
+# start the app, whether that is you on a laptop or the Desktop launcher a friend
+# double-clicks. `uvicorn main:app` still works and is better while editing,
+# because it can reload.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Loopback only by default, on purpose: a server listening on every interface is
+# what makes macOS ask whether to accept incoming connections and makes Windows
+# Firewall pop a permission dialog. Neither says anything about 127.0.0.1.
+# MASHUP_LAN=1 opts in, which is how a phone on the same wifi reaches a laptop.
+LAN = os.environ.get('MASHUP_LAN') == '1'
+PREFERRED_PORT = int(os.environ.get('PORT') or 8765)
+
+
+def _free_port() -> int:
+    """The preferred port if it is free, otherwise whatever the OS hands out."""
+    import socket
+
+    for candidate in list(range(PREFERRED_PORT, PREFERRED_PORT + 20)) + [0]:
+        with socket.socket() as s:
+            try:
+                s.bind(('127.0.0.1', candidate))
+            except OSError:
+                continue
+            return s.getsockname()[1]
+    return PREFERRED_PORT
+
+
+def _lan_address() -> str:
+    """This machine's address on the local network, for the phone case."""
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        try:
+            # nothing is sent; this only asks which interface would be used
+            s.connect(('8.8.8.8', 53))
+            return s.getsockname()[0]
+        except OSError:
+            return '127.0.0.1'
+
+
+def _announce(port: int) -> None:
+    """Wait until the server answers, then open the browser and say the URL."""
+    import time
+    import urllib.request
+    import webbrowser
+
+    url = f'http://127.0.0.1:{port}'
+    for _ in range(120):
+        try:
+            with urllib.request.urlopen(f'{url}/api/health', timeout=1):
+                break
+        except Exception:
+            time.sleep(0.5)
+    else:
+        print('  It did not come up. The output above says why.')
+        return
+
+    print(f'\n  Mashup Deck is ready:  {url}')
+    if LAN:
+        print(f'  On a phone on the same wifi:  http://{_lan_address()}:{port}')
+    print('\n  Everything happens on this computer. Close this window when done.\n')
+
+    if os.environ.get('MASHUP_NO_BROWSER') != '1':
+        try:
+            webbrowser.open(url)
+        except Exception:
+            pass
+
+
+def serve() -> None:
+    import uvicorn
+
+    # tells the boot log this is someone's own machine, where the cookie file
+    # that only a server needs is not worth warning about
+    os.environ['MASHUP_LOCAL'] = '1'
+
+    port = _free_port()
+    threading.Thread(target=_announce, args=(port,), daemon=True).start()
+    uvicorn.run(
+        app,
+        host='0.0.0.0' if LAN else '127.0.0.1',
+        port=port,
+        log_level=os.environ.get('MASHUP_LOG_LEVEL', 'warning'),
+    )
+
+
+if __name__ == '__main__':
+    serve()

@@ -1,18 +1,160 @@
+import base64
 import os
 import time
 import random
 
 import yt_dlp
 
-import cookies
-from paths import DOWNLOAD_DIR
+from paths import BASE_DIR, DATA_ROOT, DOWNLOAD_DIR
 
-# YouTube throws "sign in to confirm you're not a bot" at datacenter IPs, and
-# sometimes at home ones if you hammer it. From a home address it is usually
-# transient, so retrying across a few player clients gets through. From a cloud
-# host it is not transient at all and no client works, which is what cookies.py
-# is for. See its docstring for the four ways to supply a cookie file.
-_COOKIEFILE = cookies.load()
+# ─────────────────────────────────────────────────────────────────────────────
+# Cookies
+#
+# YouTube throws "sign in to confirm you're not a bot" at datacenter IPs. From a
+# home address that is rare and usually transient, so retrying across a few player
+# clients gets through. From a cloud host it is permanent and no client helps,
+# because the judgement is on the address. The only lever is a cookie file from a
+# browser signed in to a throwaway account. Which is why running this on the
+# machine of the person using it, as install.sh does, avoids the topic entirely.
+#
+# Supplying cookies to a free host is the awkward part: no shell, no persistent
+# disk, and the file must never reach the repo. So four sources are accepted:
+#
+#   1. YTDLP_COOKIEFILE   an explicit path, for a laptop or a host with a disk
+#   2. /etc/secrets/cookies.txt   where Render mounts a Secret File
+#   3. ./cookies.txt      next to the code, for local use
+#   4. YTDLP_COOKIES_B64  the file, base64 encoded, as an environment variable
+#                         (or YTDLP_COOKIES for the raw text)
+# ─────────────────────────────────────────────────────────────────────────────
+
+_COOKIE_HEADER = '# Netscape HTTP Cookie File'
+_SECRET_PATH = '/etc/secrets/cookies.txt'          # Render's mount point
+_LOCAL_PATH = os.path.join(BASE_DIR, 'cookies.txt')
+_WORKING_PATH = os.path.join(DATA_ROOT, 'cookies.txt')
+
+# Reported at boot and on /api/health, so a server silently running without
+# cookies is obvious rather than a mystery one failed export later.
+COOKIE_STATUS = 'none'
+
+
+def _repair_cookies(text: str) -> str:
+    """Put the tabs back if something ate them, and ensure the header line.
+
+    The Netscape format is tab separated, and pasting it through a dashboard
+    textarea turns the tabs into spaces, which yt-dlp rejects outright. Base64 is
+    the documented route because it cannot be mangled in the first place.
+    """
+    lines, fixed = [], 0
+    for line in text.replace('\r\n', '\n').replace('\r', '\n').split('\n'):
+        if line.startswith('#') or not line.strip() or '\t' in line:
+            lines.append(line)
+            continue
+        # domain, include_subdomains, path, secure, expiry, name, value
+        parts = line.split()
+        if len(parts) >= 7:
+            # the value is the remainder, since a value may contain spaces
+            lines.append('\t'.join(parts[:6] + [' '.join(parts[6:])]))
+            fixed += 1
+        else:
+            lines.append(line)
+
+    if fixed:
+        print(f'[cookies] restored tabs on {fixed} lines that arrived space separated')
+
+    body = '\n'.join(lines).strip('\n')
+    if not body.lstrip().startswith('#'):
+        body = f'{_COOKIE_HEADER}\n{body}'
+    return body + '\n'
+
+
+def _install_cookies(text: str, source: str):
+    """Write our own writable copy, and only then call the cookies loaded.
+
+    The copy matters: yt-dlp writes the jar back when it finishes, and both a
+    secret mount and a container filesystem are read only, so handing it the
+    original path fails on the way out rather than on the way in.
+    """
+    global COOKIE_STATUS
+
+    text = _repair_cookies(text)
+    rows = [
+        l for l in text.split('\n')
+        if l.strip() and not l.lstrip().startswith('#')
+    ]
+    if not any('youtube.com' in l for l in rows):
+        print('[cookies] the file has no youtube.com entries, ignoring it')
+        COOKIE_STATUS = f'invalid ({source})'
+        return None
+
+    try:
+        with open(_WORKING_PATH, 'w', encoding='utf-8') as fh:
+            fh.write(text)
+        os.chmod(_WORKING_PATH, 0o600)
+    except OSError as e:
+        print(f'[cookies] could not write the working copy: {e}')
+        COOKIE_STATUS = f'unwritable ({source})'
+        return None
+
+    COOKIE_STATUS = f'{len(rows)} cookies from {source}'
+    return _WORKING_PATH
+
+
+def _read_text(path: str):
+    try:
+        with open(path, 'r', encoding='utf-8', errors='replace') as fh:
+            return fh.read()
+    except OSError as e:
+        print(f'[cookies] could not read {path}: {e}')
+        return None
+
+
+def load_cookies():
+    """Return a writable cookie file path, or None if there are no cookies."""
+    global COOKIE_STATUS
+
+    explicit = os.environ.get('YTDLP_COOKIEFILE')
+    if explicit:
+        if not os.path.exists(explicit):
+            print(f'[cookies] YTDLP_COOKIEFILE points at {explicit}, which is not there')
+            COOKIE_STATUS = 'missing (YTDLP_COOKIEFILE)'
+            return None
+        # read in full before installing, since the source may be the copy
+        text = _read_text(explicit)
+        return _install_cookies(text, f'YTDLP_COOKIEFILE {explicit}') if text else None
+
+    for path, label in ((_SECRET_PATH, 'the Render secret file'),
+                        (_LOCAL_PATH, './cookies.txt')):
+        if os.path.exists(path):
+            text = _read_text(path)
+            if text:
+                return _install_cookies(text, label)
+
+    packed = os.environ.get('YTDLP_COOKIES_B64')
+    if packed and packed.strip():
+        # tolerate the ways a base64 blob arrives: wrapped, quoted, unpadded
+        blob = ''.join(packed.split()).strip('"\'')
+        blob += '=' * (-len(blob) % 4)
+        try:
+            return _install_cookies(
+                base64.b64decode(blob, validate=False).decode('utf-8', 'replace'),
+                'YTDLP_COOKIES_B64',
+            )
+        except Exception as e:
+            print(f'[cookies] YTDLP_COOKIES_B64 is not valid base64: {e}')
+            COOKIE_STATUS = 'invalid (YTDLP_COOKIES_B64)'
+            return None
+
+    raw = os.environ.get('YTDLP_COOKIES')
+    if raw and raw.strip():
+        # a single line env var with literal backslash-n is a common paste
+        if '\n' not in raw and '\\n' in raw:
+            raw = raw.replace('\\n', '\n')
+        return _install_cookies(raw, 'YTDLP_COOKIES')
+
+    return None
+
+
+_COOKIEFILE = load_cookies()
 
 # Tried in order. `None` means yt-dlp's own default, which usually has the most
 # audio formats; the rest are fallbacks that are sometimes let through instead.
@@ -40,6 +182,9 @@ def _base_opts() -> dict:
     opts = {
         'quiet': True,
         'no_warnings': True,
+        # quiet does not cover the progress bar, and the launcher window belongs
+        # to a person watching the app's own progress messages, not yt-dlp's
+        'noprogress': True,
         'noplaylist': True,
         'retries': 3,
         'fragment_retries': 3,
@@ -52,7 +197,7 @@ def _base_opts() -> dict:
 
 def status() -> dict:
     """What this process is set up with, for the boot log and /api/health."""
-    return {'cookies': cookies.STATUS}
+    return {'cookies': COOKIE_STATUS}
 
 
 def _with_client(opts: dict, client) -> dict:
@@ -168,7 +313,6 @@ def download_audio(video_id: str, progress_hook=None) -> str:
         # No cookies, on a host YouTube does not trust. This is the failure that
         # every cloud deploy hits, and it will not clear up by retrying.
         raise Blocked(
-            'YouTube is blocking this server and there are no cookies configured '
-            '(see cookies.py)'
+            'YouTube is blocking this server and no cookies are configured'
         )
     raise RuntimeError(f'could not download this one ({joined[:160]})')

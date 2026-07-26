@@ -124,8 +124,8 @@ rem stale and stops downloading. Refreshing here is what keeps this working
 rem months from now with nobody doing anything. No network, no problem.
 "$uv" pip install --quiet --python "$py" --upgrade yt-dlp >nul 2>&1
 
-rem run.py picks a free port, waits for the server, opens the browser
-"$py" run.py
+rem main.py picks a free port, waits for the server, opens the browser
+"$py" main.py
 pause
 "@
 
