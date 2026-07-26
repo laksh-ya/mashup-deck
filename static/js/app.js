@@ -837,6 +837,14 @@ function watchJob(total) {
       jam(String(s.step || '').replace(/^Error:\s*/i, ''));
       return;
     }
+    // Jobs live in memory, so a restart or an out of memory kill mid cut leaves
+    // us polling for a job the server has never heard of. Without this the reels
+    // keep turning forever and nothing ever says why.
+    if (s.status === 'not_found') {
+      clearInterval(pollTimer);
+      jam('the server restarted while cutting, press cut again');
+      return;
+    }
     setRail(pctFor(s.step, total), humanStep(s.step));
   }, 750);
 }

@@ -4,17 +4,26 @@ import random
 
 import yt_dlp
 
+import cookies
 from paths import DOWNLOAD_DIR
 
 # YouTube throws "sign in to confirm you're not a bot" at datacenter IPs, and
-# sometimes at home ones if you hammer it. It is usually transient, so we retry
-# across a few player clients before giving up. If your host gets blocked hard,
-# export cookies from a logged in browser and set YTDLP_COOKIEFILE=cookies.txt.
-_COOKIEFILE = os.environ.get('YTDLP_COOKIEFILE')
+# sometimes at home ones if you hammer it. From a home address it is usually
+# transient, so retrying across a few player clients gets through. From a cloud
+# host it is not transient at all and no client works, which is what cookies.py
+# is for. See its docstring for the four ways to supply a cookie file.
+_COOKIEFILE = cookies.load()
 
 # Tried in order. `None` means yt-dlp's own default, which usually has the most
 # audio formats; the rest are fallbacks that are sometimes let through instead.
-_CLIENTS = (None, 'web_safari', 'mweb', 'tv_simply', 'android')
+#
+# The list depends on whether we have cookies, because the mobile app clients
+# are the ones that get an account flagged when they are used with a signed in
+# session. Without cookies there is no account to protect, so they are fair game
+# as a last resort.
+_CLIENTS_BARE = (None, 'web_safari', 'mweb', 'tv_simply', 'android')
+_CLIENTS_COOKIED = (None, 'web_safari', 'web', 'mweb')
+_CLIENTS = _CLIENTS_COOKIED if _COOKIEFILE else _CLIENTS_BARE
 
 _BOT_HINTS = ('not a bot', 'sign in to confirm', 'too many requests', 'http error 429')
 
@@ -39,6 +48,11 @@ def _base_opts() -> dict:
     if _COOKIEFILE and os.path.exists(_COOKIEFILE):
         opts['cookiefile'] = _COOKIEFILE
     return opts
+
+
+def status() -> dict:
+    """What this process is set up with, for the boot log and /api/health."""
+    return {'cookies': cookies.STATUS}
 
 
 def _with_client(opts: dict, client) -> dict:
@@ -149,5 +163,12 @@ def download_audio(video_id: str, progress_hook=None) -> str:
     _last_download_at = time.time()
     joined = ' | '.join(errors)
     if any(_looks_blocked(e) for e in errors):
-        raise Blocked('YouTube is rate limiting this download right now')
+        if _COOKIEFILE:
+            raise Blocked('YouTube is rate limiting this download right now')
+        # No cookies, on a host YouTube does not trust. This is the failure that
+        # every cloud deploy hits, and it will not clear up by retrying.
+        raise Blocked(
+            'YouTube is blocking this server and there are no cookies configured '
+            '(see cookies.py)'
+        )
     raise RuntimeError(f'could not download this one ({joined[:160]})')

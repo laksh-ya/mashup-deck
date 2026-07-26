@@ -145,9 +145,12 @@ drops you on the trim screen, so you can still change it before cutting.
 
 | path | does |
 | --- | --- |
+| `run.py` | starts it, picks a port, opens the browser |
+| `install.sh` / `install.ps1` | one command setup on a machine with nothing installed |
 | `main.py` | routes, job tracker, filename handling |
 | `parser.py` | plain English into clips, regex only |
 | `youtube.py` | yt-dlp lookups and downloads, retries, fallback clients |
+| `cookies.py` | finds a cookie file, only needed on a server |
 | `audio.py` | trimming and crossfade merging |
 | `janitor.py` | keeps the scratch folders from growing forever |
 | `paths.py` | picks a writable scratch dir, falls back to temp |
@@ -170,7 +173,8 @@ drops you on the trim screen, so you can still change it before cutting.
 | **Type** | Shrikhand, Caveat, Baloo 2, Space Mono, all self hosted |
 | **Sound** | [cuelume](https://cuelume-site.pages.dev) |
 | **Haptics** | [web-haptics](https://haptics.lochie.me) |
-| **Deploy** | Docker, Render |
+| **Install** | one command, `uv` for Python, static ffmpeg |
+| **Deploy** | Docker, optional |
 
 No bundler, no node_modules, no CSS framework. The whole frontend is
 `index.html`, one stylesheet and six ES modules.
@@ -179,27 +183,56 @@ No bundler, no node_modules, no CSS framework. The whole frontend is
 
 ## Run it
 
-Needs ffmpeg. Python 3.11 or newer.
+One command. Nothing needs to be installed first, not even Python.
+
+**macOS and Linux** — paste into Terminal:
 
 ```bash
-brew install ffmpeg            # or: apt install ffmpeg / winget install ffmpeg
-
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
-.venv/bin/uvicorn main:app --reload --port 8000
+curl -fsSL https://raw.githubusercontent.com/Laksh-ya/mashup-deck/main/install.sh | sh
 ```
 
-http://localhost:8000
+**Windows** — paste into PowerShell:
 
-### Deploy
+```powershell
+irm https://raw.githubusercontent.com/Laksh-ya/mashup-deck/main/install.ps1 | iex
+```
 
-Push to GitHub, then render.com → **New** → **Blueprint** → pick the repo →
-**Apply**. `render.yaml` configures everything, so there is nothing to fill in.
+That puts **Mashup Deck** on the Desktop. Double-click it, the browser opens, and
+you are cutting. No security warnings, no account, no admin rights, nothing added
+to `PATH`. Everything lives in one folder you can delete: `~/.mashup-deck` on
+macOS and Linux, `%LOCALAPPDATA%\MashupDeck` on Windows.
 
-Versions cannot drift: Python is pinned in two places, every package is pinned
-exactly, and yt-dlp refreshes itself on each container start because YouTube
-changes often enough to break an old copy. Details in
-[DOCUMENTATION.md](DOCUMENTATION.md).
+It runs on the machine it is installed on, so it uses that connection to fetch
+audio. Home connections are not blocked by YouTube, which is why this needs no
+cookies and no configuration.
+
+**On a phone**, run the launcher from a terminal with `MASHUP_LAN=1` and it prints
+a second address that any device on the same wifi can open. That is the one time
+the firewall will ask for permission.
+
+### From a checkout
+
+Already have the repo and ffmpeg?
+
+```bash
+pip install -r requirements.txt
+python run.py
+```
+
+`run.py` picks a free port, waits for the server, and opens your browser. Same
+thing the launcher runs.
+
+### Deploy to a server
+
+Possible, but read this first: **YouTube refuses cloud IP addresses.** Every
+download from a fresh Render or Railway deploy fails with *"sign in to confirm
+you're not a bot"*, and the only fix is a cookie file from a throwaway account
+that you re-export every few weeks. That is why the installer above exists.
+
+If you still want it: render.com → **New** → **Blueprint** → pick the repo →
+**Apply**, then add `YTDLP_COOKIES_B64` in the dashboard. The full explanation,
+including how to export cookies without wrecking them, is in
+[DOCUMENTATION.md](DOCUMENTATION.md#blocked-downloads).
 
 ---
 

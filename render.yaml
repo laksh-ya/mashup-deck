@@ -5,6 +5,16 @@
 #
 # Free plan spins down after 15 minutes idle, so the first visit after a quiet
 # spell waits about a minute while the container wakes.
+#
+# ONE THING IS NOT IN HERE, ON PURPOSE. YouTube refuses cloud IP addresses, so a
+# deploy with no cookies fails every download with "sign in to confirm you're not
+# a bot". Cookies are a secret, so they belong in the dashboard rather than in a
+# file in the repo:
+#
+#   Environment -> add YTDLP_COOKIES_B64 -> paste `base64 -w0 cookies.txt`
+#   or: Secret Files -> add one named cookies.txt
+#
+# /api/health reports which of those it found. README.md has the export steps.
 
 services:
   - type: web

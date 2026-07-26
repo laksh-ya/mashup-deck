@@ -377,9 +377,12 @@ Downloaded audio and finished mixes are both throwaway, and without management
 | `MAX_DOWNLOAD_MB` | `400` | hard cap, oldest deleted first |
 | `MAX_OUTPUT_MB` | `150` | hard cap, oldest deleted first |
 | `SWEEP_EVERY_MIN` | `5` | background sweep interval |
-| `PORT` | `7860` | set by the host |
+| `PORT` | `7860` container, `8765` local | set by the host, or preferred by `run.py` |
 | `DATA_DIR` | app dir | where scratch lives |
-| `YTDLP_COOKIEFILE` | unset | cookies, if YouTube blocks the host |
+| `MASHUP_LAN` | unset | bind every interface so phones on the wifi can reach it |
+| `YTDLP_COOKIEFILE` | unset | path to a cookie file |
+| `YTDLP_COOKIES_B64` | unset | the cookie file itself, base64, for hosts with no disk |
+| `YTDLP_COOKIES` | unset | the same thing as raw text |
 
 Three independent rules: a TTL, a size cap, and immediate release when someone
 starts a new mix. Files belonging to a running job are never touched. `JOBS` is
@@ -397,11 +400,80 @@ directory read only and confirming it recovers.
 YouTube rate limits datacenter IPs. `youtube.py` retries across five player
 clients (`default`, `web_safari`, `mweb`, `tv_simply`, `android`), spaces requests
 at least 1.2 seconds apart, and backs off between attempts. It distinguishes
-"blocked" from "unusable" so the UI can say which. If a host is blocked properly,
-`YTDLP_COOKIEFILE` is the escape hatch.
+"blocked" from "unusable" so the UI can say which.
 
-The most reliable free option is not a cloud host at all: run it at home and
-expose it with a free Cloudflare Tunnel, since residential IPs are rarely blocked.
+**That retry loop handles a home connection having a bad minute. It does not help
+a cloud host at all.** From Render every client returns *"sign in to confirm
+you're not a bot"* on the first try and on the fifth, because the judgement is on
+the IP address rather than the request. A deploy without cookies does not work,
+so the boot log says so rather than leaving it to be found one failed export
+later. This is the reason the app ships as a one command local install instead of
+a hosted link.
+
+Cookies are the escape hatch, and `cookies.py` exists because supplying them on a
+free host is more awkward than it sounds. No shell, no persistent disk, and the
+file must never reach the repo, so four sources are accepted in order:
+`YTDLP_COOKIEFILE`, `/etc/secrets/cookies.txt` (a Render Secret File),
+`./cookies.txt`, and `YTDLP_COOKIES_B64` / `YTDLP_COOKIES`.
+
+Three details that each cost a failed deploy to learn:
+
+* **The file is copied into scratch before use.** yt-dlp writes the jar back when
+  it finishes, and both a secret mount and the image filesystem are read only, so
+  handing it the original path fails on the way out rather than on the way in.
+* **Render mounts secret files as `root:1000` with no world read.** The
+  Dockerfile pins the app user's *gid* to 1000, not just its uid, or reading
+  `/etc/secrets/cookies.txt` is a permission error.
+* **The Netscape format is tab separated,** and a dashboard textarea turns tabs
+  into spaces, which yt-dlp rejects outright. Space separated rows are rebuilt
+  with tabs, and base64 is documented as the primary route because it cannot be
+  mangled in the first place.
+
+The client list also changes when cookies are present: the mobile app clients are
+dropped, since those are the ones that get a signed in account flagged. Without
+cookies there is no account to protect and they stay in as a last resort.
+
+Cookies are maintenance, not a fix. They expire, exporting them and then
+continuing to use that browser session invalidates them, and a throwaway account
+driven from a datacenter IP eventually gets locked. Running on the machine of the
+person using it removes the entire problem, which is what `install.sh` does.
+
+A PO token provider (`bgutil-ytdlp-pot-provider`) is the other lever, and it is
+deliberately not in the image: it needs Node in the container or a second always
+on service, and its own README is clear that it may help rather than will. It is
+worth adding only if cookies alone stop being enough.
+
+### Handing it to someone else
+
+`install.sh` (macOS, Linux) and `install.ps1` (Windows) set the whole thing up on
+a machine with nothing installed, from one pasted command. What each decision is
+avoiding:
+
+* **A pasted command instead of a downloadable app.** Files that arrive through a
+  browser are tagged by the OS, and Gatekeeper then refuses to open an unsigned
+  one with a warning that reads like a virus alert. Recent macOS removed the old
+  right-click-Open escape. Nothing fetched by curl is tagged, and the launcher the
+  installer *writes* is a local file, so it just opens. Clearing this properly
+  costs $99 a year on macOS and a hardware-token certificate on Windows.
+* **`uv` rather than the system Python.** Windows has none, and on macOS touching
+  `python3` or `git` triggers the Xcode Command Line Tools dialog, which is the
+  same class of dialog we are avoiding. uv is one static binary that installs its
+  own CPython into the app's folder.
+* **Static ffmpeg and ffprobe**, not Homebrew, which would be a 400MB dependency
+  for one binary. ffprobe is not optional: yt-dlp needs it to turn what it
+  downloads into mp3. On Apple Silicon the downloads are ad-hoc signed with
+  `codesign --sign -`, because an unsigned binary there dies as `Killed: 9` with
+  no explanation.
+* **`run.py` does the launching**, so the `.command` and the `.cmd` are three
+  lines each and there is one code path shared with development.
+* **Loopback only.** Binding every interface is what triggers the macOS incoming
+  connections prompt and the Windows Firewall dialog. `MASHUP_LAN=1` opts in, for
+  the case where a phone on the same wifi should reach a laptop's copy.
+* **Everything in one folder**, no PATH edits, no sudo, so uninstalling is
+  deleting `~/.mashup-deck` and the launcher.
+
+The one thing the installer cannot do is fetch from a private repo. The URL in the
+README has to be public, or the tarball hosted somewhere that is.
 
 ### Health
 

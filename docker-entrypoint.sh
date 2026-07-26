@@ -17,9 +17,16 @@ if [ "${YTDLP_AUTO_UPDATE:-1}" = "1" ]; then
   echo "[boot] fetching the current yt-dlp..."
   if pip install --quiet --disable-pip-version-check --no-cache-dir \
        --timeout 25 --retries 1 --upgrade --target "$FRESH" yt-dlp 2>/dev/null; then
-    PYTHONPATH="$FRESH${PYTHONPATH:+:$PYTHONPATH}"
-    export PYTHONPATH
-    echo "[boot] using the freshly fetched yt-dlp"
+    # Only trust it once it has been imported. A fetched copy that needs a newer
+    # Python than this image would otherwise take the whole app down at startup,
+    # since it sits ahead of the pinned one on PYTHONPATH.
+    if PYTHONPATH="$FRESH" python -c 'import yt_dlp' 2>/dev/null; then
+      PYTHONPATH="$FRESH${PYTHONPATH:+:$PYTHONPATH}"
+      export PYTHONPATH
+      echo "[boot] using the freshly fetched yt-dlp"
+    else
+      echo "[boot] the fetched yt-dlp would not import, using the pinned one"
+    fi
   else
     echo "[boot] could not reach PyPI, using the version built into the image"
   fi

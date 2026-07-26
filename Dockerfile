@@ -11,7 +11,15 @@ RUN apt-get update \
 
 # Render and most free hosts run containers as a non-root user. Creating one, and
 # owning the app directory, keeps the scratch folders writable.
-RUN useradd --create-home --uid 1000 deck
+#
+# The gid is pinned to 1000 on purpose, not left for useradd to choose: Render
+# mounts secret files as root:1000 with no world read, so a process outside that
+# group gets "Permission denied" on /etc/secrets/cookies.txt, which is where the
+# YouTube cookie file lives on a deploy.
+# (the `|| true` covers a base image that already has a group 1000 under another
+# name; useradd --gid 1000 then simply joins the existing one)
+RUN groupadd --gid 1000 deck 2>/dev/null || true \
+ && useradd --create-home --uid 1000 --gid 1000 deck
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \

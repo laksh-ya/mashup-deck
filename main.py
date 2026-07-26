@@ -176,11 +176,14 @@ def versions() -> dict:
     except Exception:
         ytdlp = 'missing'
 
+    from youtube import status as yt_status
+
     return {
         'python': sys.version.split()[0],
         'yt_dlp': ytdlp,
         'ffmpeg': 'ok' if shutil.which('ffmpeg') else 'MISSING',
         'scratch': paths.DATA_ROOT,
+        **yt_status(),
     }
 
 
@@ -189,8 +192,15 @@ def _boot():
     v = versions()
     print(f"[boot] python {v['python']} | yt-dlp {v['yt_dlp']} | ffmpeg {v['ffmpeg']}")
     print(f"[boot] scratch dir {v['scratch']}")
+    print(f"[boot] cookies: {v['cookies']}")
     if v['ffmpeg'] == 'MISSING':
         print('[boot] WARNING: ffmpeg is not on PATH, trimming and merging will fail')
+    # Only worth saying on a server. Run from someone's own machine the address is
+    # residential, YouTube does not object, and cookies are genuinely not needed,
+    # so warning about them there is noise in a window a friend is looking at.
+    if v['cookies'] == 'none' and os.environ.get('MASHUP_LOCAL') != '1':
+        print('[boot] WARNING: no cookie file. A cloud host will be refused by '
+              'YouTube with "sign in to confirm you\'re not a bot". See cookies.py')
     # clear out whatever a previous run left behind, then sweep on a timer
     janitor.start(JOBS)
 
