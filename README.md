@@ -166,7 +166,9 @@ No bundler, no node_modules, no CSS framework. The whole frontend is
 
 ## Run it
 
-One command. Nothing needs to be installed first, not even Python.
+### Anyone, one command
+
+Nothing has to be installed first, not even Python.
 
 **macOS and Linux** — paste into Terminal:
 
@@ -180,79 +182,72 @@ curl -fsSL https://raw.githubusercontent.com/Laksh-ya/mashup-deck/main/install.s
 irm https://raw.githubusercontent.com/Laksh-ya/mashup-deck/main/install.ps1 | iex
 ```
 
-That puts **Mashup Deck** on the Desktop. Double-click it, the browser opens, and
-you are cutting. No security warnings, no account, no admin rights, nothing added
-to `PATH`. Everything lives in one folder you can delete: `~/.mashup-deck` on
-macOS and Linux, `%LOCALAPPDATA%\MashupDeck` on Windows.
+Then double-click **Mashup Deck** on the Desktop. The browser opens on its own.
 
-It is the five manual steps below, with the two "you already have this"
-assumptions removed: [`uv`](https://docs.astral.sh/uv/) brings its own Python
-because a fresh PC has none, and ffmpeg arrives as a single static binary because
-`brew install` assumes Homebrew, which is a several hundred megabyte download that
-wants a sudo password and does not exist on Windows.
+It brings its own Python and its own ffmpeg, asks for no password, adds nothing to
+`PATH`, and shows no security warning. To uninstall, delete the Desktop file and
+one folder: `~/.mashup-deck`, or `%LOCALAPPDATA%\MashupDeck` on Windows.
+[Why it is built that way](DOCUMENTATION.md#handing-it-to-someone-else).
 
-Prefer to read it before running it? Same thing, two steps:
+Rather read the script before running it:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Laksh-ya/mashup-deck/main/install.sh -o install.sh
-less install.sh && sh install.sh
+less install.sh
+sh install.sh
 ```
 
-It runs on the machine it is installed on, so it uses that connection to fetch
-audio. Home connections are not blocked by YouTube, which is why this needs no
-cookies and no configuration.
+### From the repo
 
-**On a phone**, run the launcher from a terminal with `MASHUP_LAN=1` and it prints
-a second address that any device on the same wifi can open. That is the one time
-the firewall will ask for permission.
-
-### From a checkout, the usual way
-
-Needs ffmpeg and Python 3.11 or newer.
+Needs Python 3.11 or newer, and ffmpeg:
+`brew install ffmpeg` · `apt install ffmpeg` · `winget install ffmpeg`.
 
 ```bash
-brew install ffmpeg                  # linux: apt install ffmpeg · windows: winget install ffmpeg
-
-python3 --version                    # 1. check python is there
-python3 -m venv .venv                # 2. make the venv
-source .venv/bin/activate            # 3. go into it
-pip install -r requirements.txt      # 4. install the dependencies
-python main.py                       # 5. run it
+python3 -m venv .venv               # make the venv
+source .venv/bin/activate           # go into it
+pip install -r requirements.txt     # install the dependencies
+python main.py                      # run it
 ```
 
-Step 5 picks a free port and opens your browser. `Ctrl-C` stops it, `deactivate`
-leaves the venv. Next time it is only steps 3 and 5.
-
-All of it in one go:
+Or all four at once:
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && python main.py
 ```
 
-While editing code you want reload instead, which means naming the port yourself:
+`python main.py` picks a free port and opens the browser. `Ctrl-C` stops it,
+`deactivate` leaves the venv. After the first time, only `source` and `python`
+are needed. While editing code, use reload instead:
 
 ```bash
 uvicorn main:app --reload --port 8000
 ```
 
-On Windows swap step 2 for `py -m venv .venv` and step 3 for
-`.venv\Scripts\activate`.
+On Windows: `py -m venv .venv`, then `.venv\Scripts\activate`, then the same last
+two commands.
 
-**If `pip` or `uvicorn` inside the venv says "no such file or directory",** the
-venv was copied from elsewhere or its folder was renamed; those wrappers hard code
-an absolute path to their python. Delete `.venv` and redo steps 2 to 4.
+### Good to know
 
-### Deploy to a server
+- **No cookies, no configuration.** It downloads over the connection of whichever
+  machine it runs on, and home connections are not blocked by YouTube. A server is
+  a different story, below.
+- **Phones and tablets** can use a computer's copy: start it with `MASHUP_LAN=1`
+  and it prints a second address for anything on the same wifi. That is the one
+  time the firewall asks permission.
+- **If `pip` or `uvicorn` says "no such file or directory"** inside the venv, it
+  was copied from another folder or the folder was renamed, and those wrappers
+  hard code a path to their Python. Delete `.venv` and make it again.
 
-Possible, but read this first: **YouTube refuses cloud IP addresses.** Every
-download from a fresh Render or Railway deploy fails with *"sign in to confirm
-you're not a bot"*, and the only fix is a cookie file from a throwaway account
-that you re-export every few weeks. That is why the installer above exists.
+### On a server, if you insist
 
-If you still want it: render.com → **New** → **Blueprint** → pick the repo →
-**Apply**, then add `YTDLP_COOKIES_B64` in the dashboard. The full explanation,
-including how to export cookies without wrecking them, is in
-[DOCUMENTATION.md](DOCUMENTATION.md#blocked-downloads).
+**YouTube refuses cloud IP addresses.** Every download from a fresh Render deploy
+fails with *"sign in to confirm you're not a bot"*, and the only way past it is a
+cookie file from a throwaway account, re-exported every few weeks. That is the
+whole reason the one command install exists.
+
+Still want it? render.com → **New** → **Blueprint** → pick the repo → **Apply**,
+then add `YTDLP_COOKIES_B64` in the dashboard.
+[How to export cookies without immediately invalidating them](DOCUMENTATION.md#blocked-downloads).
 
 ---
 
