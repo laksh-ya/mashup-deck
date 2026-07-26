@@ -223,38 +223,63 @@ sudo apt install ffmpeg      # Linux
 winget install ffmpeg        # Windows
 ```
 
-Then, in the project folder:
+**macOS and Linux**, in the project folder:
 
 ```bash
-python3 -m venv .venv               # make the venv
-source .venv/bin/activate           # start the venv
-pip install -r requirements.txt     # install
-uvicorn main:app --port 8000        # run
+python3 -m venv .venv                        # make the venv
+source .venv/bin/activate                    # start the venv
+pip install -r requirements.txt              # install
+uvicorn main:app --reload --port 8000        # run
 ```
 
-Open http://localhost:8000. `Ctrl-C` stops it.
+**Windows**, same thing with two lines changed:
 
-On Windows the middle two are `py -m venv .venv` and `.venv\Scripts\activate`;
-the rest is identical.
+```powershell
+py -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn main:app --reload --port 8000
+```
 
-### Other ways to run it
+Open http://localhost:8000. `Ctrl-C` stops it. `--reload` restarts the server
+whenever you save a file, so leave it on while you work.
 
-| when you want to | command |
-| --- | --- |
-| start it again another day | `source .venv/bin/activate` then `uvicorn main:app --port 8000` |
-| do the whole setup in one line | `python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && uvicorn main:app --port 8000` |
-| have it restart when you save | `uvicorn main:app --reload --port 8000` |
-| skip picking a port, open the browser too | `python main.py` |
-| use it from your phone | `uvicorn main:app --host 0.0.0.0 --port 8000` |
-
-For the phone case, get this machine's address and open `http://that-address:8000`
-on the phone. Same wifi for both, and allow it when the firewall asks.
+Another day, only the last two lines are needed. Or the whole thing at once:
 
 ```bash
-ipconfig getifaddr en0     # macOS
-hostname -I                # Linux
-ipconfig                   # Windows, the IPv4 Address line
+python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && uvicorn main:app --reload --port 8000
 ```
+
+### Use it from your phone
+
+Three steps, both devices on the same wifi.
+
+**1. Start it for the whole network** instead of only this computer:
+
+```bash
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+
+The first time, macOS or Windows asks whether to allow incoming connections.
+Allow it, otherwise the phone cannot reach it.
+
+**2. Find this computer's address on the wifi:**
+
+```bash
+ipconfig getifaddr en0     # macOS, prints something like 192.168.29.112
+hostname -I                # Linux, first address in the list
+ipconfig                   # Windows, the "IPv4 Address" line
+```
+
+**3. On the phone**, open that address with `:8000` after it:
+
+```
+http://192.168.29.112:8000
+```
+
+Keep the terminal running the whole time; closing it stops the server. The address
+changes when you rejoin the wifi or move to a different network, so check step 2
+again if the phone stops finding it.
 
 ---
 

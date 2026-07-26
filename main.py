@@ -209,6 +209,19 @@ def versions() -> dict:
     }
 
 
+def _on_a_host() -> bool:
+    """Are we deployed somewhere, rather than on someone's own machine?
+
+    Every host that runs containers tells the app which port to listen on, and
+    most of them also announce themselves. A laptop does neither.
+    """
+    return any(
+        os.environ.get(name)
+        for name in ('PORT', 'RENDER', 'RENDER_SERVICE_ID', 'DYNO',
+                     'RAILWAY_ENVIRONMENT', 'FLY_APP_NAME', 'SPACE_ID', 'K_SERVICE')
+    )
+
+
 def _boot():
     v = versions()
     print(f"[boot] python {v['python']} | yt-dlp {v['yt_dlp']} | ffmpeg {v['ffmpeg']}")
@@ -216,10 +229,11 @@ def _boot():
     print(f"[boot] cookies: {v['cookies']}")
     if v['ffmpeg'] == 'MISSING':
         print('[boot] WARNING: ffmpeg is not on PATH, trimming and merging will fail')
-    # Only worth saying on a server. Run from someone's own machine the address is
+    # Only worth saying on a server. On someone's own machine the address is
     # residential, YouTube does not object, and cookies are genuinely not needed,
-    # so warning about them there is noise in a window a friend is looking at.
-    if v['cookies'] == 'none' and os.environ.get('MASHUP_LOCAL') != '1':
+    # so the warning there is noise: in a friend's launcher window, or in your
+    # terminal every time you restart.
+    if v['cookies'] == 'none' and _on_a_host():
         print('[boot] WARNING: no cookie file. A cloud host will be refused by '
               'YouTube with "sign in to confirm you\'re not a bot". '
               'See the cookies section in youtube.py')
@@ -306,10 +320,6 @@ def _announce(port: int) -> None:
 
 def serve() -> None:
     import uvicorn
-
-    # tells the boot log this is someone's own machine, where the cookie file
-    # that only a server needs is not worth warning about
-    os.environ['MASHUP_LOCAL'] = '1'
 
     port = _free_port()
     threading.Thread(target=_announce, args=(port,), daemon=True).start()
