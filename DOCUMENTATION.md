@@ -117,8 +117,10 @@ the real safety net.
 
 No bundler, no `node_modules`, no framework. `index.html`, one stylesheet, six ES
 modules served as-is. The two third party libraries are vendored as ESM into
-`static/vendor/`, so the deployed container makes no third party requests at
-runtime. Fonts are self hosted for the same reason.
+`static/vendor/` and the fonts are self hosted, so no code or type is fetched from
+anyone else at runtime. The one external request left is each clip's thumbnail,
+which comes from YouTube's own CDN (`i.ytimg.com`) because there is nowhere else to
+get it.
 
 This is why the two React libraries that were considered for the fabric hero and
 the jelly components were not used: both need a bundler, and adding one to gain a
@@ -361,7 +363,7 @@ Downloaded audio and finished mixes are both throwaway, and without management
 | `SWEEP_EVERY_MIN` | `5` | background sweep interval |
 | `PORT` | `7860` container, `8765` local | set by the host, or preferred by `main.py` |
 | `DATA_DIR` | app dir | where scratch lives |
-| `MASHUP_LAN` | unset | bind every interface so phones on the wifi can reach it |
+| `MASHUP_LAN` | unset | same as `--lan`: serve the wifi so a phone can reach it |
 | `YTDLP_COOKIEFILE` | unset | path to a cookie file |
 | `YTDLP_COOKIES_B64` | unset | the cookie file itself, base64, for hosts with no disk |
 | `YTDLP_COOKIES` | unset | the same thing as raw text |
@@ -412,9 +414,10 @@ Three details that each cost a failed deploy to learn:
   with tabs, and base64 is documented as the primary route because it cannot be
   mangled in the first place.
 
-The client list also changes when cookies are present: the mobile app clients are
-dropped, since those are the ones that get a signed in account flagged. Without
-cookies there is no account to protect and they stay in as a last resort.
+The client list changes when cookies are present: `default`, `web_safari`, `web`,
+`mweb`. The mobile app clients are dropped, since those are the ones that get a
+signed in account flagged. Without cookies there is no account to protect, so they
+stay in as a last resort.
 
 Cookies are maintenance, not a fix. They expire, exporting them and then
 continuing to use that browser session invalidates them, and a throwaway account
@@ -447,13 +450,16 @@ avoiding:
   downloads into mp3. On Apple Silicon the downloads are ad-hoc signed with
   `codesign --sign -`, because an unsigned binary there dies as `Killed: 9` with
   no explanation.
-* **`python3 main.py` does the launching**, so the `.command` and the `.cmd` are
-  three lines each and there is one code path shared with development. It picks a
-  free port, waits for the server to answer, then opens the browser, none of which
-  a person double-clicking an icon should have to do by hand.
+* **`python3 main.py` does the launching**, so each launcher is a handful of lines
+  and there is one code path shared with development. It picks a free port, waits
+  for the server to answer, then opens the browser, none of which a person
+  double-clicking an icon should have to do by hand.
 * **Loopback only.** Binding every interface is what triggers the macOS incoming
-  connections prompt and the Windows Firewall dialog. `MASHUP_LAN=1` opts in, for
-  the case where a phone on the same wifi should reach a laptop's copy.
+  connections prompt and the Windows Firewall dialog. `--lan`, or `MASHUP_LAN=1`
+  for the launcher which takes no arguments, opts in and prints the address a
+  phone should open. That address is ranked across every interface rather than
+  taken from the default route, because with a VPN up the default route answers
+  with the VPN's address and a phone cannot reach it.
 * **Everything in one folder**, no PATH edits, no sudo, so uninstalling is
   deleting `~/.mashup-deck` and the launcher.
 
@@ -487,6 +493,14 @@ jukebox songs confirmed to resolve to the right upload with its trim window insi
 the track's real length.
 
 Repeated end to end runs against live YouTube produced real mp3s throughout.
+
+The one command install was checked the same way, from a wiped state each time:
+`install.sh` on a fresh folder, the Desktop launcher double-clicked, `/api/health`
+answering on the private Python 3.11 and the downloaded ffmpeg, then a two clip cut
+with a 2 second crossfade that came out 28.0s from two 15s clips, matching the
+timeline maths. The cookie loader was checked against all four sources plus the
+awkward cases: a wrapped base64 paste, tabs replaced by spaces, a read only source
+file, an export with no YouTube entries, a missing path and a corrupt blob.
 
 ---
 
