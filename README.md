@@ -210,35 +210,31 @@ cookies and no configuration.
 a second address that any device on the same wifi can open. That is the one time
 the firewall will ask for permission.
 
-### From a checkout, step by step
+### From a checkout, the usual way
 
-If you have the repo and would rather do it by hand. Needs Python 3.11 or newer.
-
-```bash
-brew install ffmpeg                                  # 1. the audio tool
-python3 -m venv .venv                                # 2. a private environment
-.venv/bin/python -m pip install -r requirements.txt  # 3. the dependencies
-.venv/bin/python run.py                              # 4. start it
-```
-
-The last line opens your browser. `Ctrl-C` stops it. Next time, only step 4.
-
-On Linux swap step 1 for `sudo apt install ffmpeg`; on Windows use
-`winget install ffmpeg`, then `py -m venv .venv`,
-`.venv\Scripts\python -m pip install -r requirements.txt`,
-`.venv\Scripts\python run.py`.
-
-Two things worth knowing. Always call `.venv/bin/python`, because a virtualenv
-that gets copied or whose folder is renamed keeps stale absolute paths inside its
-`bin` wrappers, so `.venv/bin/uvicorn` breaks while `.venv/bin/python` still
-works. And `python run.py` without the venv will complain about missing
-dependencies rather than doing something surprising.
-
-For auto-reload while editing:
+Needs ffmpeg and Python 3.11 or newer.
 
 ```bash
-.venv/bin/uvicorn main:app --reload --port 8000
+brew install ffmpeg                  # linux: apt install ffmpeg
+
+python3 --version                    # check python is there
+python3 -m venv .venv                # make the venv
+source .venv/bin/activate            # go into it
+pip install -r requirements.txt      # install the dependencies
+uvicorn main:app --port 8000         # run it
 ```
+
+http://localhost:8000 · `Ctrl-C` to stop · `deactivate` to leave the venv.
+
+On Windows: `py -m venv .venv`, then `.venv\Scripts\activate`, then the same two
+commands. Add `--reload` to the uvicorn line while editing.
+
+Or skip the port and browser fiddling with `python run.py`, which picks a free
+port and opens the browser for you. That is what the Desktop launcher runs.
+
+**If `pip` or `uvicorn` inside the venv fails with "no such file or directory",**
+the venv was copied or its folder was renamed. Those wrappers hard code an
+absolute path to their python. Delete `.venv` and redo the steps above.
 
 ### Deploy to a server
 
