@@ -447,7 +447,7 @@ avoiding:
   downloads into mp3. On Apple Silicon the downloads are ad-hoc signed with
   `codesign --sign -`, because an unsigned binary there dies as `Killed: 9` with
   no explanation.
-* **`python main.py` does the launching**, so the `.command` and the `.cmd` are
+* **`python3 main.py` does the launching**, so the `.command` and the `.cmd` are
   three lines each and there is one code path shared with development. It picks a
   free port, waits for the server to answer, then opens the browser, none of which
   a person double-clicking an icon should have to do by hand.

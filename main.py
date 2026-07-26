@@ -22,7 +22,7 @@ except ModuleNotFoundError as missing:
         '      source .venv/bin/activate        (Windows: .venv\\Scripts\\activate)\n'
         '      pip install -r requirements.txt\n\n'
         '  then:\n\n'
-        '      python main.py\n'
+        '      python3 main.py\n'
     )
 
 import janitor

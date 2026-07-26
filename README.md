@@ -131,7 +131,7 @@ drops you on the trim screen, so you can still change it before cutting.
 
 | path | does |
 | --- | --- |
-| `main.py` | routes, job tracker, filename handling, and `python main.py` to start it |
+| `main.py` | routes, job tracker, filename handling, and `python3 main.py` to start it |
 | `install.sh` / `install.ps1` | one command setup on a machine with nothing installed |
 | `parser.py` | plain English into clips, regex only |
 | `youtube.py` | yt-dlp lookups and downloads, retries, fallback clients, cookies |
@@ -236,7 +236,7 @@ as you save.
 To use it from your phone, run step 4 as this instead:
 
 ```bash
-python main.py --lan
+python3 main.py --lan
 ```
 
 It prints the link to open on the phone:
@@ -246,7 +246,3 @@ It prints the link to open on the phone:
 ```
 
 Both devices on the same wifi, and allow it the first time the firewall asks.
-
-<p align="center">
-  Made by <a href="https://github.com/Laksh-ya">Lakshya</a>
-</p>
