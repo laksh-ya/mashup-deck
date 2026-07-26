@@ -269,12 +269,3 @@ virtual adapter is running.
 
 ---
 
-## Note
-
-Downloading audio from YouTube is against their terms of service. Running this
-yourself is one thing; a public instance is the kind of thing a host takes down
-if it gets reported.
-
-<p align="center">
-  Made by <a href="https://github.com/Laksh-ya">Lakshya</a>
-</p>
