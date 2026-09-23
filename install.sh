@@ -3,6 +3,9 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/laksh-ya/mashup-deck/main/install.sh | sh
 #
+# The README's universal command (the same line for Mac, Linux and Windows
+# PowerShell) ends up running exactly this on Mac and Linux.
+#
 # What it does:
 #   - works out what machine this is (and asks if it cannot tell)
 #   - asks whether you want to try it once or install it
@@ -108,9 +111,11 @@ detect() {
 
   case "$OS" in
     windows)
-      die "This window is a Unix-style shell on Windows. Use PowerShell instead:
-
-    irm https://raw.githubusercontent.com/$REPO/$REF/install.ps1 | iex" ;;
+      die "This is a Unix-style window on Windows (Git Bash or similar).
+  Windows needs PowerShell instead:
+    1. Close this window.
+    2. Open the Start menu, type PowerShell, press Enter.
+    3. Paste the same command there and press Enter." ;;
     android)
       die "This looks like an Android phone. The phone version is not ready yet.
   For now, run this command on a laptop (Mac, Windows or Linux)." ;;
@@ -140,11 +145,15 @@ choose_mode() {
       note ""
       note "  1) Try it once   runs now from a temporary folder,"
       note "                   nothing is left behind when you close it"
-      if [ "$OS" = wsl ]; then
-      note "  2) Install it    keeps it on this machine with a start command,"
-      else
-      note "  2) Install it    puts a Mashup Deck launcher on your Desktop,"
-      fi
+      case "$OS" in
+      wsl)
+      note "  2) Install it    keeps it on this machine with a start command," ;;
+      mac)
+      note "  2) Install it    adds a Mashup Deck app to Launchpad and your" 
+      note "                   Applications folder, plus a Desktop icon," ;;
+      *)
+      note "  2) Install it    adds Mashup Deck to your apps menu and Desktop," ;;
+      esac
       note "                   and it updates itself every time it starts"
       note ""
       ask "Choose 1 or 2 [2]:" 2
@@ -191,8 +200,17 @@ fetch_app() {
 setup_python() {
   if [ ! -x "$TOOLS/uv" ]; then
     note "[2/5] installing a private copy of Python"
-    curl -fsSL https://astral.sh/uv/install.sh \
-      | env UV_INSTALL_DIR="$TOOLS" UV_NO_MODIFY_PATH=1 INSTALLER_NO_MODIFY_PATH=1 sh >/dev/null 2>&1 \
+    # the release tarball straight from GitHub, rather than uv's own installer
+    # script, which would also drop a receipt file in ~/.config/uv
+    case "$OS-$ARCH" in
+      mac-arm64) UV_TARGET=aarch64-apple-darwin ;;
+      mac-x64)   UV_TARGET=x86_64-apple-darwin ;;
+      *-arm64)   UV_TARGET=aarch64-unknown-linux-gnu ;;
+      *)         UV_TARGET=x86_64-unknown-linux-gnu ;;
+    esac
+    curl -fsSL "https://github.com/astral-sh/uv/releases/latest/download/uv-$UV_TARGET.tar.gz" \
+      | tar xzf - -C "$TOOLS" --strip-components=1 2>/dev/null
+    [ -x "$TOOLS/uv" ] \
       || die "Could not install uv (the Python manager). Check the internet and try again."
   else
     note "[2/5] Python is already here"
@@ -338,18 +356,22 @@ desktop_dir() {
 }
 
 write_launchers() {
-  LAUNCHER=""; MENU_ENTRY=""
+  LAUNCHER=""; MENU_ENTRY=""; MAC_APP=""
   case "$OS" in
     mac)
-      mkdir -p "$HOME/Desktop"
-      LAUNCHER="$HOME/Desktop/Mashup Deck.command"
-      cat > "$LAUNCHER" <<CMD_EOF
+      # the .command is what actually runs, in a Terminal window: that window
+      # is the app, and closing it stops it
+      cat > "$ROOT/Mashup Deck.command" <<CMD_EOF
 #!/bin/sh
 # Double-click to open Mashup Deck. Close this window to stop it.
 clear
 exec sh "$ROOT/launch.sh"
 CMD_EOF
-      chmod +x "$LAUNCHER"
+      chmod +x "$ROOT/Mashup Deck.command"
+      mkdir -p "$HOME/Desktop"
+      LAUNCHER="$HOME/Desktop/Mashup Deck.command"
+      cp "$ROOT/Mashup Deck.command" "$LAUNCHER" && chmod +x "$LAUNCHER"
+      write_mac_app
       ;;
     linux)
       entry="[Desktop Entry]
@@ -357,7 +379,7 @@ Type=Application
 Name=Mashup Deck
 Comment=Make mashups from song links
 Exec=sh \"$ROOT/launch.sh\"
-Icon=$ROOT/app/static/favicon.svg
+Icon=$ROOT/icon.png
 Terminal=true
 Categories=AudioVideo;Audio;"
       apps="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
@@ -383,43 +405,105 @@ CMD_EOF
   chmod +x "$ROOT/mashup-deck"
 }
 
-# the favicon is optional; keep the icon line pointing at something that exists
-fix_icon() {
-  [ -n "$MENU_ENTRY" ] || return 0
-  for f in "$APP/static/favicon.svg" "$APP/static/favicon.png" "$APP/static/icon.png"; do
-    if [ -f "$f" ]; then
-      for e in "$MENU_ENTRY" "$LAUNCHER"; do
-        [ -f "$e" ] && sed "s|^Icon=.*|Icon=$f|" "$e" > "$e.tmp" && mv "$e.tmp" "$e" && chmod +x "$e"
-      done
-      return 0
-    fi
-  done
-  for e in "$MENU_ENTRY" "$LAUNCHER"; do
-    [ -f "$e" ] && sed '/^Icon=/d' "$e" > "$e.tmp" && mv "$e.tmp" "$e" && chmod +x "$e"
-  done
+# The app gets a real Mac app in Launchpad and Applications. It is a tiny
+# bundle whose only job is to open the .command above in Terminal. Built here,
+# on this machine, so macOS does not treat it as something downloaded.
+write_mac_app() {
+  APPS_DIR="/Applications"
+  [ -w "$APPS_DIR" ] || APPS_DIR="$HOME/Applications"
+  MAC_APP="$APPS_DIR/Mashup Deck.app"
+  rm -rf "$MAC_APP"
+  mkdir -p "$MAC_APP/Contents/MacOS" "$MAC_APP/Contents/Resources" || { MAC_APP=""; return 0; }
+  cat > "$MAC_APP/Contents/Info.plist" <<PLIST_EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key><string>Mashup Deck</string>
+  <key>CFBundleDisplayName</key><string>Mashup Deck</string>
+  <key>CFBundleIdentifier</key><string>com.laksh-ya.mashup-deck</string>
+  <key>CFBundleExecutable</key><string>mashup-deck</string>
+  <key>CFBundleIconFile</key><string>icon</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>LSMinimumSystemVersion</key><string>10.13</string>
+</dict>
+</plist>
+PLIST_EOF
+  cat > "$MAC_APP/Contents/MacOS/mashup-deck" <<APP_EOF
+#!/bin/sh
+exec open -a Terminal "$ROOT/Mashup Deck.command"
+APP_EOF
+  chmod +x "$MAC_APP/Contents/MacOS/mashup-deck"
+  [ -f "$ROOT/icon.icns" ] && cp "$ROOT/icon.icns" "$MAC_APP/Contents/Resources/icon.icns"
+  # nudge Launchpad and Spotlight to notice it now rather than later
+  touch "$MAC_APP"
+  LSREG=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+  [ -x "$LSREG" ] && "$LSREG" -f "$MAC_APP" >/dev/null 2>&1 || true
+}
+
+# icon.png / icon.icns / icon.ico drawn by the app's own Python, no downloads
+make_icon() {
+  if [ -f "$APP/make_icon.py" ]; then
+    "$VENV/bin/python" "$APP/make_icon.py" "$ROOT" >/dev/null 2>&1 || true
+  fi
+}
+
+# one file that removes everything this installer added
+write_uninstaller() {
+  U="$ROOT/uninstall.sh"
+  {
+    printf '#!/bin/sh\n# Removes Mashup Deck from this computer. Written by install.sh.\n'
+    printf 'printf "\\n  Removing Mashup Deck...\\n"\n'
+    [ -n "$MAC_APP" ]    && printf 'rm -rf "%s"\n' "$MAC_APP"
+    [ -n "$LAUNCHER" ]   && printf 'rm -f "%s"\n' "$LAUNCHER"
+    [ -n "$MENU_ENTRY" ] && printf 'rm -f "%s"\n' "$MENU_ENTRY"
+    printf 'rm -rf "%s"\n' "$ROOT"
+    printf 'printf "  Done. Mashup Deck is gone from this computer.\\n"\n'
+    printf 'printf "  (mp3s you saved are still in your Downloads folder.)\\n\\n"\n'
+  } > "$U"
+  chmod +x "$U"
 }
 
 # ── what to tell the person, for this machine only ──────────────────────────
 tell_install_done() {
   say ""
   rule
-  note "Installed."
+  note "Installed. Here is how to use it from now on:"
   say ""
   case "$OS" in
     mac)
-      note "To open it later: double-click \"Mashup Deck\" on your Desktop."
-      note "A Terminal window opens with it; that window IS the app, so leave"
-      note "it open while you use it and close it when you are done."
+      if [ -n "$MAC_APP" ]; then
+        note "1. Open it: click Mashup Deck in Launchpad, or in your"
+        note "   $( [ "$APPS_DIR" = /Applications ] && echo 'Applications folder' || echo 'Applications folder (the one in your home folder)'),"
+        note "   or double-click \"Mashup Deck\" on your Desktop."
+        note "   To keep it in the Dock: open it, then right-click its Dock"
+        note "   icon > Options > Keep in Dock."
+      else
+        note "1. Open it: double-click \"Mashup Deck\" on your Desktop."
+      fi
+      note "2. A Terminal window opens along with your browser. That window"
+      note "   IS the app: leave it open while you use Mashup Deck."
+      note "3. Done? Close that Terminal window. That stops it."
       say ""
       note "If macOS says it \"cannot be opened\" or \"cannot verify\" it:"
       note "  System Settings > Privacy & Security, scroll down,"
       note "  click \"Open Anyway\" next to Mashup Deck, then confirm."
-      note "  (Or right-click the file > Open > Open.) Only needed once."
+      note "  (Or right-click it > Open > Open.) Only needed once."
       ;;
     linux)
       if [ -n "$LAUNCHER" ]; then
-        note "To open it later: \"Mashup Deck\" on your Desktop, or search"
-        note "\"Mashup Deck\" in your apps menu."
+        note "1. Open it: \"Mashup Deck\" on your Desktop, or search"
+        note "   \"Mashup Deck\" in your apps menu."
+      else
+        note "1. Open it: search \"Mashup Deck\" in your apps menu."
+      fi
+      note "   Or from a terminal:  $ROOT/mashup-deck"
+      note "2. A terminal window opens along with your browser. That window"
+      note "   IS the app: leave it open while you use Mashup Deck."
+      note "3. Done? Close that window (or press Ctrl+C in it)."
+      if [ -n "$LAUNCHER" ]; then
+        say ""
         case "${XDG_CURRENT_DESKTOP:-}" in
           *GNOME*|*Unity*|*ubuntu*)
             note "If the Desktop icon shows a red cross or will not open:"
@@ -430,25 +514,45 @@ tell_install_done() {
             note "If the Desktop icon will not open: right-click it and look for"
             note "  \"Allow Launching\" or \"Trust\"." ;;
         esac
-      else
-        note "To open it later: search \"Mashup Deck\" in your apps menu."
       fi
-      note "Or from a terminal:  $ROOT/mashup-deck"
       ;;
     wsl)
-      note "To open it later, run this in your WSL terminal:"
-      note "  $ROOT/mashup-deck"
-      note "It opens in your normal Windows browser."
+      note "1. Open it: run this in your WSL terminal:"
+      note "     $ROOT/mashup-deck"
+      note "   It opens in your normal Windows browser."
+      note "2. Done? Press Ctrl+C in that terminal."
       ;;
   esac
   say ""
   note "It runs only on this computer, at http://127.0.0.1:$PORT_HINT"
   note "(if that is busy it picks the next free port and prints it)."
   note "It updates itself (the app and yt-dlp) each time it starts."
-  note "To remove it: delete the folder $ROOT"
-  [ -n "$LAUNCHER" ] && note "  and the launcher $LAUNCHER"
-  [ -n "$MENU_ENTRY" ] && note "  and $MENU_ENTRY"
+  say ""
+  note "To remove it completely, paste this in a terminal:"
+  note "  sh \"$ROOT/uninstall.sh\""
   rule
+}
+
+# try-once: say what was cleaned up, and check it really is gone
+tell_once_closed() {
+  rm -rf "$ROOT" 2>/dev/null
+  {
+    printf '\n'
+    rule
+    note "Mashup Deck is closed."
+    if [ -e "$ROOT" ]; then
+      note "Some temporary files could not be deleted. Remove them with:"
+      note "  rm -rf \"$ROOT\""
+    else
+      note "Cleaned up: the temporary folder it ran from is deleted, with"
+      note "everything it downloaded. Nothing else was added to this computer."
+    fi
+    note "mp3s you saved from the browser stay in your Downloads folder."
+    note "You can close the browser tab now."
+    note "Liked it? Run the same command again and choose 2 to install it."
+    rule
+    printf '\n'
+  } 2>/dev/null
 }
 
 tell_browser_notes() {
@@ -480,8 +584,9 @@ main() {
   if [ "$MODE" = once ]; then
     ROOT=$(mktemp -d "${TMPDIR:-/tmp}/mashup-deck.XXXXXX") || die "Could not make a temporary folder"
     # everything goes when this run ends, however it ends
-    trap 'rm -rf "$ROOT"' EXIT
-    trap 'exit 130' INT TERM
+    # (HUP is the Terminal window being closed)
+    trap tell_once_closed EXIT
+    trap 'exit 130' INT TERM HUP
     note "Trying it once from $ROOT"
   else
     ROOT="${MASHUP_HOME:-$HOME/.mashup-deck}"
@@ -501,8 +606,9 @@ main() {
   write_launch_script
 
   if [ "$MODE" = install ]; then
+    make_icon
     write_launchers
-    fix_icon
+    write_uninstaller
     tell_install_done
     if [ -n "$MASHUP_NO_START" ]; then
       say ""; note "Not starting it now (MASHUP_NO_START is set)."; say ""
@@ -516,9 +622,10 @@ main() {
   else
     say ""
     rule
-    note "Starting it now. When you are done, press Ctrl+C or close this"
-    note "window and the temporary folder is deleted."
-    note "Liked it? Run the same command again and choose 2 to install it."
+    note "Starting it now. Your browser will open with Mashup Deck."
+    note "This window IS the app: leave it open while you use it."
+    note "When you are done: press Ctrl+C here (or close this window)."
+    note "Everything it downloaded gets deleted then, nothing stays behind."
     rule
     tell_browser_notes
     MASHUP_UPDATE=0 sh "$ROOT/launch.sh"
