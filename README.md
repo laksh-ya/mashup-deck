@@ -212,10 +212,54 @@ irm https://raw.githubusercontent.com/laksh-ya/mashup-deck/main/install.ps1 | ie
 
 ### Removing it
 
-- **Windows:** Settings > Apps > Installed apps > Mashup Deck > Uninstall
-- **Mac and Linux:** paste `sh ~/.mashup-deck/uninstall.sh` in Terminal
+The uninstaller removes everything the installer added: the app, its private
+Python, ffmpeg and deno, and every shortcut. Mixes you saved stay in your
+Downloads folder.
 
-A try-once run removes itself when you close it.
+**Mac**
+
+1. Quit Mashup Deck if it is open (close its Terminal window).
+2. Open Terminal: open Launchpad, type `Terminal`, press Enter.
+3. Paste this and press Enter:
+   ```
+   sh ~/.mashup-deck/uninstall.sh
+   ```
+4. It says "Done. Mashup Deck is gone from this computer." The app in
+   Applications and Launchpad, the Desktop icon and the `~/.mashup-deck`
+   folder are all gone. If you had kept it in the Dock, drag that icon off.
+
+**Windows**
+
+1. Close Mashup Deck if it is open (close its PowerShell window).
+2. Open Start, type `Installed apps`, press Enter. (On Windows 10 it is
+   called `Apps & features`.)
+3. Find **Mashup Deck** in the list, click the `...` next to it (or click
+   it), then **Uninstall**.
+4. A window says "Removing Mashup Deck..." then "Done" and closes by itself.
+   The Start menu and Desktop shortcuts and the app folder are all gone.
+
+If Mashup Deck is not in that list, paste this in PowerShell instead:
+```powershell
+powershell -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\MashupDeck\uninstall.ps1"
+```
+
+**Linux**
+
+1. Close Mashup Deck if it is open (close its terminal window).
+2. Open a terminal and paste this, then press Enter:
+   ```
+   sh ~/.mashup-deck/uninstall.sh
+   ```
+3. The apps-menu entry, the Desktop icon and the `~/.mashup-deck` folder are
+   all gone.
+
+If you installed it somewhere else, the installer printed the exact remove
+command for that place at the end of the install.
+
+**Try it once** leaves nothing to uninstall. On Mac and Linux everything is
+deleted the moment you close it. On Windows, press Ctrl+C in its window to
+delete everything straight away; if you closed the window instead, the leftover
+temporary folder is deleted the next time you choose "Try it once".
 
 ### Using it from a phone
 
@@ -253,9 +297,12 @@ Needs **Python 3.11 or 3.12** (3.13 and newer removed a module pydub needs), and
 ```bash
 python3 -m venv .venv                    # 1. make the venv    (windows: py -m venv .venv)
 source .venv/bin/activate                # 2. start the venv   (windows: .venv\Scripts\activate)
-pip install -r requirements.txt          # 3. install
+pip install -r requirements.txt "yt-dlp[default]" deno   # 3. install
 uvicorn main:app --reload --port 8000    # 4. run it
 ```
+
+`yt-dlp[default]` and `deno` in step 3 let yt-dlp solve YouTube's JavaScript
+challenge; the installers and the Docker image add the same two.
 
 Open http://localhost:8000. `Ctrl-C` stops it, and `--reload` picks up your edits
 as you save.
