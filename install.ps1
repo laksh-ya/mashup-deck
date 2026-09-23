@@ -111,6 +111,136 @@ function Test-DownloadHosts {
   }
 }
 
+# ── watched programs ────────────────────────────────────────────────────────
+# Step 3 used to run uv straight in the window. If anything on the machine made
+# it wait (an old uv from an earlier attempt holding the cache lock, antivirus
+# holding a file, a click in the window pausing output), the window just sat
+# there. Now every long step runs as a watched process: its output goes to a
+# log file, the window prints a heartbeat, and if nothing moves for a few
+# minutes it is stopped and the next way of doing it is tried.
+$LogFile = Join-Path $env:TEMP 'mashup-deck-install.log'
+function Log($m) {
+  try { Add-Content -Path $LogFile -Value ("[{0}] {1}" -f (Get-Date -Format 'HH:mm:ss'), $m) -Encoding UTF8 } catch {}
+}
+
+function Quote-Arg($a) {
+  $a = "$a"
+  if ($a -ne '' -and $a -notmatch '[\s"]') { return $a }
+  $a = $a -replace '(\\*)"', '$1$1\"'
+  $a = $a -replace '(\\+)$', '$1$1'
+  return '"' + $a + '"'
+}
+
+function Get-FolderBytes($path) {
+  if (-not $path -or -not (Test-Path $path)) { return 0 }
+  try {
+    $s = (Get-ChildItem -Path $path -Recurse -File -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
+    if ($s) { return [int64]$s } else { return 0 }
+  } catch { return 0 }
+}
+
+# Runs $exe with $argList. Returns 0 on success, the exit code on failure, or
+# -1 if it was stopped because it stalled or ran too long. $watch is a list of
+# folders whose growth counts as progress (downloads land there).
+function Invoke-Watched($what, $exe, $argList, $watch, $stallMin = 3, $maxMin = 20) {
+  $out = Join-Path $env:TEMP ('mashup-step-' + [Guid]::NewGuid().ToString('N').Substring(0, 8))
+  $stdout = "$out.out.txt"; $stderr = "$out.err.txt"; $stdin = "$out.in.txt"
+  Set-Content -Path $stdin -Value '' -Encoding ASCII   # empty input: nothing can sit waiting for a keypress
+  $line = ($argList | ForEach-Object { Quote-Arg $_ }) -join ' '
+  Log "START $what : $exe $line"
+  $p = Start-Process -FilePath $exe -ArgumentList $line -NoNewWindow -PassThru `
+       -RedirectStandardOutput $stdout -RedirectStandardError $stderr -RedirectStandardInput $stdin
+  $null = $p.Handle   # Windows PowerShell only reports the exit code if the handle was touched
+  $start = Get-Date; $lastMove = $start; $lastSig = ''; $lastBeat = $start; $result = $null
+  while (-not $p.HasExited) {
+    Start-Sleep -Seconds 2
+    $now = Get-Date
+    $logBytes = 0
+    foreach ($f in $stdout, $stderr) { if (Test-Path $f) { $logBytes += (Get-Item $f).Length } }
+    $sig = "$logBytes"
+    if (($now - $lastBeat).TotalSeconds -ge 10) {
+      foreach ($w in $watch) { $sig += '|' + (Get-FolderBytes $w) }
+    } else { $sig = $lastSig }
+    if ($sig -ne $lastSig) { $lastMove = $now; $lastSig = $sig }
+    if (($now - $lastBeat).TotalSeconds -ge 10) {
+      $lastBeat = $now
+      $tail = ''
+      try { $tail = (Get-Content $stderr -Tail 1 -ErrorAction SilentlyContinue) } catch {}
+      if (-not $tail) { try { $tail = (Get-Content $stdout -Tail 1 -ErrorAction SilentlyContinue) } catch {} }
+      $tail = "$tail".Trim(); if ($tail.Length -gt 70) { $tail = $tail.Substring(0, 70) + '...' }
+      $el = [int]($now - $start).TotalSeconds
+      Say ("  still working on $what ({0}m {1:00}s){2}" -f [int][math]::Floor($el / 60), ($el % 60), $(if ($tail) { " - $tail" } else { '' }))
+    }
+    if (($now - $lastMove).TotalMinutes -ge $stallMin) { $result = 'stalled'; break }
+    if (($now - $start).TotalMinutes -ge $maxMin) { $result = 'too long'; break }
+  }
+  if ($result) {
+    Say "  $what has not moved for a while ($result) - stopping it and trying another way."
+    try { & taskkill.exe /T /F /PID $p.Id 2>&1 | Out-Null } catch {}
+    try { $p.Kill() } catch {}
+    Start-Sleep -Seconds 1
+    $code = -1
+  } else {
+    $p.WaitForExit()
+    $code = $p.ExitCode
+    if ($null -eq $code) { $code = 0 }
+  }
+  foreach ($f in $stdout, $stderr) {
+    if (Test-Path $f) { try { Add-Content -Path $LogFile -Value (Get-Content $f -Raw -ErrorAction SilentlyContinue) -Encoding UTF8 } catch {} }
+  }
+  Log "END $what : exit $code $result"
+  if ($code -ne 0 -and $code -ne -1) {
+    $tail = @()
+    try { $tail = Get-Content $stderr -Tail 4 -ErrorAction SilentlyContinue } catch {}
+    foreach ($t in $tail) { if ("$t".Trim()) { Say "  | $("$t".Trim())" } }
+  }
+  Remove-Item $stdout, $stderr, $stdin -Force -ErrorAction SilentlyContinue
+  return $code
+}
+
+# An earlier attempt that was closed mid-way can leave uv or python running in
+# the background, holding a lock that makes every new attempt wait forever.
+function Stop-Leftovers {
+  if (-not $Root) { return }
+  $found = @()
+  foreach ($proc in (Get-Process -ErrorAction SilentlyContinue)) {
+    $path = $null
+    try { $path = $proc.Path } catch {}
+    if ($path -and $path.StartsWith($Root, [StringComparison]::OrdinalIgnoreCase)) { $found += $proc }
+  }
+  if ($found.Count) {
+    Say "stopping $($found.Count) leftover process(es) from an earlier attempt..."
+    foreach ($proc in $found) {
+      Log "killing leftover $($proc.Id) $($proc.Path)"
+      try { & taskkill.exe /T /F /PID $proc.Id 2>&1 | Out-Null } catch {}
+      try { $proc.Kill() } catch {}
+    }
+    Start-Sleep -Seconds 1
+  }
+  # a lock file left by a killed uv
+  foreach ($lock in (Join-Path $Root 'cache\.lock')) { Remove-Item $lock -Force -ErrorAction SilentlyContinue }
+}
+
+# A click inside a PowerShell window turns on "Select" mode, which freezes
+# everything writing to it until a key is pressed. Turn that off for this window.
+function Disable-QuickEdit {
+  try {
+    if (-not ('MashupConsole' -as [type])) {
+      Add-Type -Name MashupConsole -Namespace '' -MemberDefinition @'
+[DllImport("kernel32.dll")] public static extern IntPtr GetStdHandle(int h);
+[DllImport("kernel32.dll")] public static extern bool GetConsoleMode(IntPtr h, out uint m);
+[DllImport("kernel32.dll")] public static extern bool SetConsoleMode(IntPtr h, uint m);
+'@ -ErrorAction Stop
+    }
+    $h = [MashupConsole]::GetStdHandle(-10)
+    $m = 0
+    if ([MashupConsole]::GetConsoleMode($h, [ref]$m)) {
+      # clear ENABLE_QUICK_EDIT_MODE (0x40), keep ENABLE_EXTENDED_FLAGS (0x80)
+      $null = [MashupConsole]::SetConsoleMode($h, (($m -band (-bnot 0x40)) -bor 0x80))
+    }
+  } catch {}
+}
+
 # ── what machine is this ────────────────────────────────────────────────────
 function Get-Machine {
   $arch = $env:PROCESSOR_ARCHITEW6432
@@ -205,17 +335,67 @@ function Install-Python {
     Fail 'Could not set up Python: it could not be downloaded from github.com. Campus and office wifi often block download sites - try a mobile hotspot and run the command again.'
   }
   Say "[3/5] installing the app's libraries and deno"
-  Say 'this downloads from pypi.org. deno is the big one (tens of MB), so on'
-  Say 'slow wifi this step can take several minutes. Progress shows below.'
-  # yt-dlp[default] brings yt-dlp-ejs, the solver for YouTube's JavaScript
-  # challenge, and the deno package puts deno.exe in the environment.
+  Say "(a full log is kept in $LogFile)"
   $req = Join-Path $App 'requirements.txt'
-  if ((Run-Visible $Uv pip install --python $Py -r $req 'yt-dlp[default]' deno) -ne 0) {
-    Fail "Could not install the app's libraries from pypi.org. Campus and office wifi often block download sites - try a mobile hotspot and run the command again. If it works on the hotspot, the wifi is the blocker, not this app."
+  $cache = $env:UV_CACHE_DIR
+  $uvBase = @('pip', 'install', '--python', $Py, '--link-mode', 'copy', '--no-progress')
+
+  # 1. the libraries, without deno. uv first; if uv stalls or fails, once more
+  #    with a fresh cache; then plain pip as the last way.
+  $libs = @('-r', $req, 'yt-dlp[default]')
+  Say 'installing the libraries (usually under a minute)...'
+  $ok = (Invoke-Watched 'the libraries' $Uv ($uvBase + $libs) @($cache, $Venv)) -eq 0
+  if (-not $ok) {
+    Say 'trying the libraries again with a fresh download folder...'
+    Stop-Leftovers
+    $env:UV_CACHE_DIR = Join-Path $Root ('cache-' + [Guid]::NewGuid().ToString('N').Substring(0, 6))
+    $ok = (Invoke-Watched 'the libraries (second try)' $Uv ($uvBase + $libs) @($env:UV_CACHE_DIR, $Venv)) -eq 0
   }
-  # requirements.txt pins yt-dlp as a fallback floor; start on the current one
-  $null = Run $Uv pip install --quiet --python $Py --upgrade 'yt-dlp[default]' deno
-  if ((Run (Join-Path $Venv 'Scripts\deno.exe') --version) -ne 0) { Fail 'deno was installed but will not run' }
+  if (-not $ok) {
+    Say 'trying the libraries with pip instead of uv...'
+    $null = Invoke-Watched 'pip setup' $Py @('-m', 'ensurepip', '--upgrade') @($Venv) 3 10
+    $ok = (Invoke-Watched 'the libraries (pip)' $Py @('-m', 'pip', 'install', '--disable-pip-version-check', '--no-input', '--timeout', '30', '--retries', '3', '-r', $req, 'yt-dlp[default]') @($Venv)) -eq 0
+  }
+  if (-not $ok) {
+    Fail "Could not install the app's libraries. Please send the log file $LogFile to whoever shared the app - it says exactly where it got stuck."
+  }
+  Say 'libraries installed.'
+
+  # 2. deno: the pypi package first, then the zip straight from deno's GitHub
+  #    releases into the tools folder (which the launcher also puts on PATH).
+  Say 'installing deno (about 40 MB)...'
+  $denoOk = (Invoke-Watched 'deno' $Uv ($uvBase + @('deno')) @($env:UV_CACHE_DIR, $Venv) 3 15) -eq 0
+  $deno = Join-Path $Venv 'Scripts\deno.exe'
+  if ($denoOk) { $denoOk = Test-Path $deno }
+  if (-not $denoOk) {
+    Say 'getting deno from its own download page instead...'
+    try {
+      $zip = Join-Path $Tools 'deno.zip'
+      Get-File 'https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip' $zip 'deno (about 40 MB)'
+      Expand-Archive -Path $zip -DestinationPath $Tools -Force
+      Remove-Item $zip -Force -ErrorAction SilentlyContinue
+      $deno = Join-Path $Tools 'deno.exe'
+      $denoOk = Test-Path $deno
+    } catch { Log "deno zip failed: $($_.Exception.Message)"; $denoOk = $false }
+  }
+  if ($denoOk) {
+    # the first start of deno.exe is when antivirus scans it, which can take a minute
+    Say 'checking deno starts (antivirus may scan it the first time)...'
+    $denoOk = (Invoke-Watched 'deno check' $deno @('--version') @() 4 6) -eq 0
+  }
+  if (-not $denoOk) {
+    Write-Host ''
+    Say 'Note: deno could not be set up, so some YouTube links may not download.'
+    Say 'Everything else works. Running the command again later usually fixes it.'
+    Write-Host ''
+  } else {
+    Say 'deno ready.'
+  }
+
+  # 3. requirements.txt pins yt-dlp as a floor; move to the current one. Not
+  #    needed to start, so a short leash and no complaint if it fails.
+  $null = Invoke-Watched 'yt-dlp update' $Uv ($uvBase + @('--upgrade', 'yt-dlp[default]')) @($env:UV_CACHE_DIR, $Venv) 2 4
+  $env:UV_CACHE_DIR = $cache
 }
 
 # ── ffmpeg, the one thing pip cannot provide ────────────────────────────────
@@ -495,6 +675,9 @@ try {
   $env:UV_CACHE_DIR = Join-Path $Root 'cache'
   $env:UV_HTTP_TIMEOUT = '60'
   New-Item -ItemType Directory -Force -Path $Tools | Out-Null
+  Set-Content -Path $LogFile -Value "Mashup Deck install log $(Get-Date -Format s) - $($machine.Label) - PowerShell $($PSVersionTable.PSVersion) - $Root" -Encoding UTF8 -ErrorAction SilentlyContinue
+  Disable-QuickEdit
+  Stop-Leftovers
   Test-DownloadHosts
 
   Get-App
