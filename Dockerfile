@@ -30,9 +30,12 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /home/deck/app
 
-# requirements first, so editing app code does not reinstall the dependencies
+# requirements first, so editing app code does not reinstall the dependencies.
+# yt-dlp[default] adds yt-dlp-ejs, the solver for YouTube's JavaScript challenge,
+# and deno is the JavaScript runtime it runs on; the installers ship the same two.
+# The yt-dlp version still comes from the pin in requirements.txt.
 COPY --chown=deck:deck requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt "yt-dlp[default]" deno==2.9.7
 
 COPY --chown=deck:deck . .
 
