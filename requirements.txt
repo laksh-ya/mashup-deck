@@ -1,6 +1,6 @@
 # Every version is exact, so a build today and a build in six months install
-# the same thing. Python itself is pinned in the Dockerfile (3.11.9) and in
-# .python-version, so those cannot drift apart either.
+# the same thing. Python itself is pinned to 3.11 everywhere: the Dockerfile
+# (3.11.9), .python-version, and PYTHON_VERSION in install.sh / install.ps1.
 #
 # You should not need to touch this file.
 
