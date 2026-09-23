@@ -58,6 +58,59 @@ function Run {
   return $LASTEXITCODE
 }
 
+# Run a program with its output on screen - the download steps show their
+# progress this way, so a slow network looks slow instead of frozen. Hands
+# back the exit code.
+function Run-Visible {
+  $ErrorActionPreference = 'Continue'
+  $exe, $rest = $args
+  & $exe @rest
+  return $LASTEXITCODE
+}
+
+# Every download goes through here: a timeout (the default is no timeout, so
+# a connection that drips bytes through a proxy would hang forever), three
+# tries, and a message that says what is coming from where.
+$DownloadTries = 3
+$DownloadTimeoutSec = 120
+function Get-File($url, $out, $what) {
+  $site = ([System.Uri]$url).Host
+  for ($i = 1; $i -le $DownloadTries; $i++) {
+    Say "downloading $what from $site (try $i of $DownloadTries)..."
+    try {
+      Invoke-WebRequest -Uri $url -OutFile $out -TimeoutSec $DownloadTimeoutSec -UseBasicParsing
+      return
+    } catch {
+      if ($i -lt $DownloadTries) { Say "that did not work ($($_.Exception.Message)) - trying again..." }
+    }
+  }
+  Fail "Could not download $what. The address $url would not deliver. Campus and office wifi often block download sites like $site - try a mobile hotspot and run the command again. If it works on the hotspot, the wifi is the blocker, not this app."
+}
+
+# The places everything comes from, checked up front so a network that blocks
+# one of them (campus and office wifi often do) is named before any waiting.
+function Test-DownloadHosts {
+  Say 'checking the places it downloads from are reachable...'
+  $blocked = @()
+  foreach ($h in 'github.com', 'codeload.github.com', 'objects.githubusercontent.com', 'pypi.org', 'files.pythonhosted.org') {
+    try {
+      $null = Invoke-WebRequest -Uri "https://$h/" -Method Head -TimeoutSec 8 -UseBasicParsing
+    } catch {
+      # any HTTP answer at all (even an error page) means the host is reachable
+      if ($_.Exception.Response) { continue }
+      $blocked += $h
+    }
+  }
+  if ($blocked.Count) {
+    Write-Host ''
+    Say 'Heads up: this computer cannot reach:'
+    foreach ($h in $blocked) { Say "  - $h" }
+    Say 'Campus and office wifi often block download sites. If a step below'
+    Say 'fails on one of these, try a mobile hotspot and run the command again.'
+    Write-Host ''
+  }
+}
+
 # ── what machine is this ────────────────────────────────────────────────────
 function Get-Machine {
   $arch = $env:PROCESSOR_ARCHITEW6432
@@ -116,8 +169,8 @@ function Get-App {
     $which = if ($sha) { $sha } else { $Ref }
     $url = "https://codeload.github.com/$Repo/tar.gz/$which"
     $tar = Join-Path $Root 'app.tar.gz'
-    try { Invoke-WebRequest -Uri $url -OutFile $tar -UseBasicParsing }
-    catch { Fail "Could not download the app. Check the internet connection and run the command again." }
+    Get-File $url $tar 'the app'
+    Say 'unpacking the app...'
     # tar.exe ships with Windows 10 and later. GitHub nests everything one
     # folder deep, hence the strip.
     if ((Run tar.exe -xzf $tar -C $App --strip-components=1) -ne 0) { Fail 'Could not unpack the app' }
@@ -136,8 +189,8 @@ function Install-Python {
     Say '[2/5] installing a private copy of Python'
     $zipName = if ($IsArm) { 'uv-aarch64-pc-windows-msvc.zip' } else { 'uv-x86_64-pc-windows-msvc.zip' }
     $zip = Join-Path $Tools 'uv.zip'
-    try { Invoke-WebRequest -Uri "https://github.com/astral-sh/uv/releases/latest/download/$zipName" -OutFile $zip -UseBasicParsing }
-    catch { Fail 'Could not download uv (the Python manager). Check the internet and try again.' }
+    Get-File "https://github.com/astral-sh/uv/releases/latest/download/$zipName" $zip 'uv, the Python manager (about 15 MB)'
+    Say 'unpacking uv...'
     Expand-Archive -Path $zip -DestinationPath $Tools -Force
     Remove-Item $zip -Force
     if (-not (Test-Path $Uv)) { Fail 'Could not install uv (the Python manager).' }
@@ -146,14 +199,19 @@ function Install-Python {
   }
   # On ARM Windows use the x64 Python: every library (and ffmpeg) exists for it,
   # and Windows runs it fine.
+  Say 'setting up Python (downloads about 30 MB the first time; progress shows below)...'
   $want = if ($IsArm) { "cpython-$PythonVersion-windows-x86_64-none" } else { $PythonVersion }
-  if ((Run $Uv venv --quiet --clear --python $want $Venv) -ne 0) { Fail 'Could not set up Python' }
+  if ((Run-Visible $Uv venv --clear --python $want $Venv) -ne 0) {
+    Fail 'Could not set up Python: it could not be downloaded from github.com. Campus and office wifi often block download sites - try a mobile hotspot and run the command again.'
+  }
   Say "[3/5] installing the app's libraries and deno"
+  Say 'this downloads from pypi.org. deno is the big one (tens of MB), so on'
+  Say 'slow wifi this step can take several minutes. Progress shows below.'
   # yt-dlp[default] brings yt-dlp-ejs, the solver for YouTube's JavaScript
   # challenge, and the deno package puts deno.exe in the environment.
   $req = Join-Path $App 'requirements.txt'
-  if ((Run $Uv pip install --quiet --python $Py -r $req 'yt-dlp[default]' deno) -ne 0) {
-    Fail "Could not install the app's libraries. Check the internet and try again."
+  if ((Run-Visible $Uv pip install --python $Py -r $req 'yt-dlp[default]' deno) -ne 0) {
+    Fail "Could not install the app's libraries from pypi.org. Campus and office wifi often block download sites - try a mobile hotspot and run the command again. If it works on the hotspot, the wifi is the blocker, not this app."
   }
   # requirements.txt pins yt-dlp as a fallback floor; start on the current one
   $null = Run $Uv pip install --quiet --python $Py --upgrade 'yt-dlp[default]' deno
@@ -172,8 +230,8 @@ function Install-Ffmpeg {
     foreach ($tool in 'ffmpeg', 'ffprobe') {
       $gz  = Join-Path $Tools "$tool.gz"
       $exe = Join-Path $Tools "$tool.exe"
-      try { Invoke-WebRequest -Uri "$base/$tool-win32-x64.gz" -OutFile $gz -UseBasicParsing }
-      catch { Fail "Could not download $tool. Check the internet and try again." }
+      Get-File "$base/$tool-win32-x64.gz" $gz "$tool (tens of MB)"
+      Say "unpacking $tool..."
       $in  = [System.IO.File]::OpenRead($gz)
       $out = [System.IO.File]::Create($exe)
       $gzip = New-Object System.IO.Compression.GzipStream($in, [System.IO.Compression.CompressionMode]::Decompress)
@@ -396,7 +454,7 @@ function Start-App {
 
 # ── main ────────────────────────────────────────────────────────────────────
 $saved = @{}
-foreach ($n in 'UV_PYTHON_INSTALL_DIR', 'UV_CACHE_DIR') {
+foreach ($n in 'UV_PYTHON_INSTALL_DIR', 'UV_CACHE_DIR', 'UV_HTTP_TIMEOUT') {
   $saved[$n] = [Environment]::GetEnvironmentVariable($n, 'Process')
 }
 $Mode = ''
@@ -435,7 +493,9 @@ try {
   $Py    = Join-Path $Venv 'Scripts\python.exe'
   $env:UV_PYTHON_INSTALL_DIR = Join-Path $Root 'python'
   $env:UV_CACHE_DIR = Join-Path $Root 'cache'
+  $env:UV_HTTP_TIMEOUT = '60'
   New-Item -ItemType Directory -Force -Path $Tools | Out-Null
+  Test-DownloadHosts
 
   Get-App
   Install-Python
