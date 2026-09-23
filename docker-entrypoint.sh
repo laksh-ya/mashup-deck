@@ -16,7 +16,17 @@ FRESH="${HOME:-/tmp}/.ytdlp"
 if [ "${YTDLP_AUTO_UPDATE:-1}" = "1" ]; then
   echo "[boot] fetching the current yt-dlp..."
   if pip install --quiet --disable-pip-version-check --no-cache-dir \
-       --timeout 25 --retries 1 --upgrade --target "$FRESH" yt-dlp 2>/dev/null; then
+       --timeout 25 --retries 1 --upgrade --no-deps --target "$FRESH" yt-dlp 2>/dev/null; then
+    # Each yt-dlp release pins the exact yt-dlp-ejs (the YouTube challenge
+    # solver) it was built with, so fetch that one alongside it. Only these two
+    # go into $FRESH; the image's other libraries stay exactly as built.
+    ejs=$(sed -n 's/^Requires-Dist: yt-dlp-ejs==\([^;]*\);.*/\1/p' \
+          "$FRESH"/yt_dlp-*.dist-info/METADATA 2>/dev/null | head -n 1)
+    if [ -n "$ejs" ]; then
+      pip install --quiet --disable-pip-version-check --no-cache-dir \
+        --timeout 25 --retries 1 --upgrade --no-deps --target "$FRESH" \
+        "yt-dlp-ejs==$ejs" 2>/dev/null || true
+    fi
     # Only trust it once it has been imported. A fetched copy that needs a newer
     # Python than this image would otherwise take the whole app down at startup,
     # since it sits ahead of the pinned one on PYTHONPATH.
