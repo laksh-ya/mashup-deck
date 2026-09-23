@@ -20,10 +20,9 @@
 
 ## Features
 
-### Write it however you want
+### Two input modes
 
-Type it like a sentence, or fill in boxes. Switching between the two keeps
-whatever you already wrote.
+Plain text or a form. Switching modes keeps the current input.
 
 ```
 Kesariya from 0:45 to 1:10
@@ -31,42 +30,42 @@ then youtu.be/4_eEgJhsBMo from 0:20 to 0:52
 then Levitating full
 ```
 
-Song names get searched. Links work with or without `https://`, including
-`youtu.be`, `watch?v=`, `/shorts/`, `/live/` and extra parameters. Leave the
-times out, or write `full`, to keep a whole track.
+Song names are searched. Links work with or without `https://`, including
+`youtu.be`, `watch?v=`, `/shorts/`, `/live/` and extra parameters. No times, or
+`full`, keeps the whole track.
 
-### Trim before you commit
+### Trim and arrange
 
 | | |
 | --- | --- |
 | **Drag to reorder** | Grab the ridged handle. Arrow keys work too. |
 | **Draggable trim** | Pull either chrome handle, or slide the lit region to move the whole selection. Arrow keys nudge a second, shift jumps five. |
-| **Hear it** | Preview the exact slice before cutting, straight from YouTube. |
+| **Preview** | Plays the exact slice from YouTube before cutting. |
 | **Live tally** | Clip count and true runtime, with crossfade overlap subtracted. |
 | **Crossfade** | A real fader, off by default. |
-| **Add or drop** | Add a song without leaving the rack. |
+| **Add or remove** | Songs are added from the rack itself. |
 
-### Then it cuts the tape
+### Export
 
-- Progress comes from the actual backend steps, not a timer
-- A blocked clip gets skipped and named, instead of losing the whole mix
-- Name the cassette and that becomes the downloaded filename
-- The deck names the song currently playing, and marks the handover during a crossfade
-- Each clip's stretch is drawn on the scrub bar, crossfade zones hatched
-- Share the finished mp3 as a file, so it lands in WhatsApp playable
-- Not happy? Edit the trims and cut it again
+- Progress reflects the actual backend steps, not a timer
+- A blocked clip is skipped and named; the rest of the mix still exports
+- The cassette name becomes the downloaded filename
+- The deck shows the song currently playing and marks the handover during a crossfade
+- Each clip's span is drawn on the scrub bar, crossfade zones hatched
+- Share sends the mp3 as a file, so it plays inside WhatsApp
+- Trims can be edited and the mix re-cut
 
-### The room reacts
+### Background
 
-The background is a canvas, not a video. Two records turning, drifting stage
-lights, and a spectrum along the floor reading the real audio through a Web Audio
-analyser while your mix plays. Press anywhere and the waves swell under it. It
-gets busier while a tape is being cut.
+A canvas, not a video: two turning records, drifting stage lights, and a floor
+spectrum driven by the real audio through a Web Audio analyser during playback.
+Pressing anywhere swells the waves at that point. Activity increases while a mix
+is being cut.
 
 ### Jukebox
 
-Eight ready mixes for when you have nothing in mind. Shuffle play picks one and
-drops you on the trim screen, so you can still change it before cutting.
+Eight ready mixes. Shuffle play picks one and opens it on the trim screen,
+where it can be edited before cutting.
 
 ### Details
 
@@ -75,7 +74,7 @@ drops you on the trim screen, so you can still change it before cutting.
 - **Skeuomorphic throughout**: walnut, brushed steel, brass, screws, LCD, ruled
   paper, punch holes, a cassette that ejects
 - **Every hover flourish also fires on touch**, since phones have no hover
-- **Responsive from 320px up**, verified rather than assumed
+- **Responsive from 320px up**, verified in a browser
 - **Contrast checked from rendered pixels**, not computed styles
 - **Keyboard reachable**: reorder, trim, submit, play, close
 - **Respects reduced motion**
@@ -160,18 +159,18 @@ drops you on the trim screen, so you can still change it before cutting.
 | **Haptics** | [web-haptics](https://haptics.lochie.me) |
 | **Install** | one command, `uv` for Python, static ffmpeg |
 
-No bundler, no node_modules, no CSS framework. The whole frontend is
-`index.html`, one stylesheet and six ES modules.
+No bundler, no node_modules, no CSS framework. The frontend is `index.html`,
+one stylesheet and six ES modules.
 
 ---
 
 ## Run it
 
-**One command, same on Mac, Windows and Linux. Needs nothing installed.**
+One command for Mac, Windows and Linux. No prerequisites.
 
 1. Open a terminal:
-   - **Mac:** open Launchpad, type `Terminal`, press Enter
-   - **Windows:** open Start, type `PowerShell`, press Enter
+   - **Mac:** Launchpad > type `Terminal` > Enter
+   - **Windows:** Start > type `PowerShell` > Enter
    - **Linux:** open Terminal
 2. Paste this line and press Enter:
 
@@ -179,26 +178,23 @@ No bundler, no node_modules, no CSS framework. The whole frontend is
 ${__md-$(curl -fsSL --proto-default https raw.githubusercontent.com/laksh-ya/mashup-deck/main/install.sh|sh >&2)};${__md+'}; irm https://raw.githubusercontent.com/laksh-ya/mashup-deck/main/install.ps1|iex #'}
 ```
 
-3. It tells you what computer it found, then asks one question:
-   - **1) Try it once** - runs straight away from a temporary folder. When you
-     close it, everything it downloaded is deleted. (On Windows press Ctrl+C
-     in its window to close it; if you close the window instead, the leftovers
-     are cleared the next time you try it.)
-   - **2) Install it** - adds a Mashup Deck app you can open any time:
-     Launchpad and Applications on a Mac, the Start menu and Desktop on
-     Windows, the apps menu and Desktop on Linux. It updates itself every time
-     it starts.
-4. Your browser opens with Mashup Deck. The terminal window that stays open
-   **is** the app: leave it open while you use it, close it when you are done.
+3. The installer detects the system, then offers two modes:
+   - **1) Try it once** - runs from a temporary folder. Everything it downloaded
+     is deleted on close. On Windows, close it with Ctrl+C in its window; closing
+     the window instead leaves the temporary folder until the next try-once run.
+   - **2) Install it** - adds a Mashup Deck app: Launchpad and Applications on
+     Mac, Start menu and Desktop on Windows, apps menu and Desktop on Linux.
+     Updates itself on every start.
+4. Mashup Deck opens in the browser. The terminal window is the app process:
+   keep it open while in use, close it to stop.
 
-Everything else (Python, ffmpeg, deno, yt-dlp) it downloads by itself into one
-private folder. No admin password, nothing added to the system.
+Python, ffmpeg, deno and yt-dlp are downloaded into one private folder. No admin
+password. Nothing is added to the system.
 
-Why the line looks odd: it is one line written so that the Mac/Linux terminal
-runs the first half and Windows PowerShell runs the second half, each ignoring
-the other. Use PowerShell on Windows, not the old Command Prompt.
+The command is a polyglot: Mac/Linux shells run the first half, PowerShell runs
+the second. On Windows, use PowerShell, not Command Prompt.
 
-If you prefer the plain per-system commands, they do exactly the same thing:
+Per-OS equivalents:
 
 ```bash
 # Mac and Linux (Terminal)
@@ -210,88 +206,84 @@ curl -fsSL https://raw.githubusercontent.com/laksh-ya/mashup-deck/main/install.s
 irm https://raw.githubusercontent.com/laksh-ya/mashup-deck/main/install.ps1 | iex
 ```
 
-### Removing it
+### Uninstall
 
-The uninstaller removes everything the installer added: the app, its private
-Python, ffmpeg and deno, and every shortcut. Mixes you saved stay in your
-Downloads folder.
+The uninstaller removes the app, its private Python, ffmpeg and deno, and every
+shortcut. Saved mixes in Downloads are kept.
 
 **Mac**
 
-1. Quit Mashup Deck if it is open (close its Terminal window).
-2. Open Terminal: open Launchpad, type `Terminal`, press Enter.
-3. Paste this and press Enter:
+1. Quit Mashup Deck (close its Terminal window).
+2. Open Terminal: Launchpad > type `Terminal` > Enter.
+3. Run:
    ```
    sh ~/.mashup-deck/uninstall.sh
    ```
-4. It says "Done. Mashup Deck is gone from this computer." The app in
-   Applications and Launchpad, the Desktop icon and the `~/.mashup-deck`
-   folder are all gone. If you had kept it in the Dock, drag that icon off.
+4. Output ends with "Done. Mashup Deck is gone from this computer." Removed: the
+   app in Applications and Launchpad, the Desktop icon, and `~/.mashup-deck`.
+   A Dock icon, if pinned, has to be dragged off manually.
 
 **Windows**
 
-1. Close Mashup Deck if it is open (close its PowerShell window).
-2. Open Start, type `Installed apps`, press Enter. (On Windows 10 it is
-   called `Apps & features`.)
-3. Find **Mashup Deck** in the list, click the `...` next to it (or click
-   it), then **Uninstall**.
-4. A window says "Removing Mashup Deck..." then "Done" and closes by itself.
-   The Start menu and Desktop shortcuts and the app folder are all gone.
+1. Close Mashup Deck (close its PowerShell window).
+2. Start > type `Installed apps` > Enter (`Apps & features` on Windows 10).
+3. Find **Mashup Deck**, click `...` next to it (or click the entry), then
+   **Uninstall**.
+4. A window shows "Removing Mashup Deck..." then "Done" and closes. Removed:
+   Start menu and Desktop shortcuts, and the app folder.
 
-If Mashup Deck is not in that list, paste this in PowerShell instead:
+If Mashup Deck is missing from that list, run in PowerShell:
 ```powershell
 powershell -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\MashupDeck\uninstall.ps1"
 ```
 
 **Linux**
 
-1. Close Mashup Deck if it is open (close its terminal window).
-2. Open a terminal and paste this, then press Enter:
+1. Close Mashup Deck (close its terminal window).
+2. In a terminal, run:
    ```
    sh ~/.mashup-deck/uninstall.sh
    ```
-3. The apps-menu entry, the Desktop icon and the `~/.mashup-deck` folder are
-   all gone.
+3. Removed: the apps-menu entry, the Desktop icon, and `~/.mashup-deck`.
 
-If you installed it somewhere else, the installer printed the exact remove
-command for that place at the end of the install.
+**Custom install location:** the installer prints the matching uninstall command
+at the end of the install.
 
-**Try it once** leaves nothing to uninstall. On Mac and Linux everything is
-deleted the moment you close it. On Windows, press Ctrl+C in its window to
-delete everything straight away; if you closed the window instead, the leftover
-temporary folder is deleted the next time you choose "Try it once".
+**Try it once** leaves nothing to uninstall. Mac and Linux delete everything on
+close. On Windows, Ctrl+C deletes everything immediately; closing the window
+leaves the temporary folder until the next "Try it once" run.
 
-### Using it from a phone
+### Phone access
 
-The installed copy only listens to its own machine. To let a phone on the same
-wifi use it, start it with `MASHUP_LAN=1` instead of opening the app.
+The installed app listens on its own machine only. To allow a phone on the same
+wifi, start it with `MASHUP_LAN=1` instead of opening the app.
 
-**Windows**, in PowerShell:
+**Windows** (PowerShell):
 
 ```powershell
 $env:MASHUP_LAN=1; powershell -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\MashupDeck\launch.ps1"
 ```
 
-**macOS and Linux**, in Terminal:
+**macOS and Linux** (Terminal):
 
 ```bash
 MASHUP_LAN=1 sh ~/.mashup-deck/launch.sh
 ```
 
-It prints the link to open on the phone:
+It prints the address for the phone:
 
 ```
   Open this on your phone:  http://192.168.29.112:8765
 ```
 
-Both devices have to be on the same wifi, and the firewall asks permission the
-first time, which is expected: allow it.
+Both devices must be on the same wifi. The firewall asks for permission on first
+run; allow it.
 
 ---
 
 ## Build it yourself
 
-Needs **Python 3.11 or 3.12** (3.13 and newer removed a module pydub needs), and ffmpeg:
+Requires **Python 3.11 or 3.12** (3.13+ removed a module pydub needs) and ffmpeg:
 `brew install ffmpeg` / `sudo apt install ffmpeg` / `winget install ffmpeg`
 
 ```bash
@@ -301,22 +293,22 @@ pip install -r requirements.txt "yt-dlp[default]" deno   # 3. install
 uvicorn main:app --reload --port 8000    # 4. run it
 ```
 
-`yt-dlp[default]` and `deno` in step 3 let yt-dlp solve YouTube's JavaScript
-challenge; the installers and the Docker image add the same two.
+`yt-dlp[default]` and `deno` let yt-dlp solve YouTube's JavaScript challenge. The
+installers and the Docker image include both.
 
-Open http://localhost:8000. `Ctrl-C` stops it, and `--reload` picks up your edits
-as you save.
+Open http://localhost:8000. `Ctrl-C` stops the server. `--reload` restarts it on
+file changes.
 
-To use it from your phone, run step 4 as this instead:
+Phone access: replace step 4 with:
 
 ```bash
 python3 main.py --lan
 ```
 
-It prints the link to open on the phone:
+It prints the address for the phone:
 
 ```
   Open this on your phone:  http://192.168.29.112:8765
 ```
 
-Both devices on the same wifi, and allow it the first time the firewall asks.
+Both devices must be on the same wifi. Allow the firewall prompt on first run.
