@@ -275,7 +275,14 @@ Write-Host ''
 Write-Host '  Your browser will open by itself when it is ready.'
 Write-Host '  If it does not, open the http://127.0.0.1:... link printed below'
 Write-Host '  (usually http://127.0.0.1:8765) in any browser.'
-Write-Host '  To stop it: close this window, or press Ctrl+C.'
+if ($Root -like '*mashup-deck-once-*') {
+  # a try-once run: only Ctrl+C lets the installer clean up straight away
+  Write-Host '  To stop it: press Ctrl+C in this window. That also deletes'
+  Write-Host '  everything it downloaded. Closing the window instead leaves the'
+  Write-Host '  temporary files until the next time you try it.'
+} else {
+  Write-Host '  To stop it: close this window, or press Ctrl+C.'
+}
 & $Py main.py @args
 '@
   $body = $body.Replace('__ROOT__', (Quote $Root)).Replace('__REPO__', (Quote $Repo)).Replace('__REF__', (Quote $Ref))
@@ -450,6 +457,8 @@ try {
     Say 'This window IS the app: leave it open while you use it.'
     Say 'When you are done: press Ctrl+C here. That also deletes'
     Say 'everything it downloaded, so nothing stays behind.'
+    Say '(Closing the window instead leaves the temporary files until'
+    Say 'the next time you try it.)'
     Rule
     Start-App
   }
