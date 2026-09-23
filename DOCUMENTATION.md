@@ -1,7 +1,7 @@
 # Documentation
 
-The long version: what this is, how it is put together, what was decided and
-what was rejected, and the things that are not obvious from the outside.
+What this is, how it is built, what was decided and rejected, and behaviour
+that is not obvious from the outside.
 
 - [What it is for](#what-it-is-for)
 - [The pipeline](#the-pipeline)
@@ -394,8 +394,8 @@ so the boot log says so rather than leaving it to be found one failed export
 later. This is the reason the app ships as a one command local install instead of
 a hosted link.
 
-Cookies are the escape hatch, and the cookie section of `youtube.py` is longer than
-you would expect because supplying them on a free host is awkward. No shell, no
+Cookies are the escape hatch. The cookie section of `youtube.py` is long because
+supplying them on a free host is awkward: no shell, no
 persistent disk, and the file must never reach the repo, so four sources are
 accepted in order:
 `YTDLP_COOKIEFILE`, `/etc/secrets/cookies.txt` (a Render Secret File),
@@ -443,7 +443,7 @@ avoiding:
   costs $99 a year on macOS and a hardware-token certificate on Windows.
 * **`uv` rather than the system Python.** Windows has none, and on macOS touching
   `python3` or `git` triggers the Xcode Command Line Tools dialog, which is the
-  same class of dialog we are avoiding. uv is one static binary that installs its
+  same class of dialog the installer avoids. uv is one static binary that installs its
   own CPython into the app's folder.
 * **Static ffmpeg and ffprobe**, not Homebrew, which would be a 400MB dependency
   for one binary. ffprobe is not optional: yt-dlp needs it to turn what it
