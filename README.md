@@ -133,6 +133,7 @@ drops you on the trim screen, so you can still change it before cutting.
 | --- | --- |
 | `main.py` | routes, job tracker, filename handling, and `python3 main.py` to start it |
 | `install.sh` / `install.ps1` | one command setup on a machine with nothing installed |
+| `make_icon.py` | draws the app icon for the Mac app, Start menu and Linux launcher |
 | `parser.py` | plain English into clips, regex only |
 | `youtube.py` | yt-dlp lookups and downloads, retries, fallback clients, cookies |
 | `audio.py` | trimming and crossfade merging |
@@ -166,45 +167,69 @@ No bundler, no node_modules, no CSS framework. The whole frontend is
 
 ## Run it
 
-### Windows
+**One command, same on Mac, Windows and Linux. Needs nothing installed.**
 
-Needs nothing installed. Paste into **PowerShell**:
+1. Open a terminal:
+   - **Mac:** open Launchpad, type `Terminal`, press Enter
+   - **Windows:** open Start, type `PowerShell`, press Enter
+   - **Linux:** open Terminal
+2. Paste this line and press Enter:
 
-```powershell
-irm https://raw.githubusercontent.com/Laksh-ya/mashup-deck/main/install.ps1 | iex
+```
+${__md-$(curl -fsSL --proto-default https raw.githubusercontent.com/laksh-ya/mashup-deck/main/install.sh|sh >&2)};${__md+'}; irm https://raw.githubusercontent.com/laksh-ya/mashup-deck/main/install.ps1|iex #'}
 ```
 
-Then double-click **Mashup Deck** on the Desktop. The browser opens on its own.
+3. It tells you what computer it found, then asks one question:
+   - **1) Try it once** - runs straight away from a temporary folder. When you
+     close it, everything it downloaded is deleted.
+   - **2) Install it** - adds a Mashup Deck app you can open any time:
+     Launchpad and Applications on a Mac, the Start menu and Desktop on
+     Windows, the apps menu and Desktop on Linux. It updates itself every time
+     it starts.
+4. Your browser opens with Mashup Deck. The terminal window that stays open
+   **is** the app: leave it open while you use it, close it when you are done.
 
-Uninstall: delete the Desktop file and the folder `%LOCALAPPDATA%\MashupDeck`.
+Everything else (Python, ffmpeg, deno, yt-dlp) it downloads by itself into one
+private folder. No admin password, nothing added to the system.
 
-### macOS and Linux
+Why the line looks odd: it is one line written so that the Mac/Linux terminal
+runs the first half and Windows PowerShell runs the second half, each ignoring
+the other. Use PowerShell on Windows, not the old Command Prompt.
 
-Needs nothing installed. Paste into **Terminal**:
+If you prefer the plain per-system commands, they do exactly the same thing:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Laksh-ya/mashup-deck/main/install.sh | sh
+# Mac and Linux (Terminal)
+curl -fsSL https://raw.githubusercontent.com/laksh-ya/mashup-deck/main/install.sh | sh
 ```
 
-Then double-click **Mashup Deck** on the Desktop. The browser opens on its own.
+```powershell
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/laksh-ya/mashup-deck/main/install.ps1 | iex
+```
 
-Uninstall: delete the Desktop file and the folder `~/.mashup-deck`.
+### Removing it
+
+- **Windows:** Settings > Apps > Installed apps > Mashup Deck > Uninstall
+- **Mac and Linux:** paste `sh ~/.mashup-deck/uninstall.sh` in Terminal
+
+A try-once run removes itself when you close it.
 
 ### Using it from a phone
 
 The installed copy only listens to its own machine. To let a phone on the same
-wifi use it, start it with `MASHUP_LAN=1` instead of double-clicking.
+wifi use it, start it with `MASHUP_LAN=1` instead of opening the app.
 
 **Windows**, in PowerShell:
 
 ```powershell
-$env:MASHUP_LAN=1; & "$HOME\Desktop\Mashup Deck.cmd"
+$env:MASHUP_LAN=1; powershell -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\MashupDeck\launch.ps1"
 ```
 
 **macOS and Linux**, in Terminal:
 
 ```bash
-MASHUP_LAN=1 sh ~/Desktop/"Mashup Deck.command"
+MASHUP_LAN=1 sh ~/.mashup-deck/launch.sh
 ```
 
 It prints the link to open on the phone:
