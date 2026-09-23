@@ -489,7 +489,7 @@ tell_install_done() {
       note "If macOS says it \"cannot be opened\" or \"cannot verify\" it:"
       note "  System Settings > Privacy & Security, scroll down,"
       note "  click \"Open Anyway\" next to Mashup Deck, then confirm."
-      note "  (Or right-click it > Open > Open.) Only needed once."
+      note "  Only needed once."
       ;;
     linux)
       if [ -n "$LAUNCHER" ]; then
