@@ -181,7 +181,9 @@ ${__md-$(curl -fsSL --proto-default https raw.githubusercontent.com/laksh-ya/mas
 
 3. It tells you what computer it found, then asks one question:
    - **1) Try it once** - runs straight away from a temporary folder. When you
-     close it, everything it downloaded is deleted.
+     close it, everything it downloaded is deleted. (On Windows press Ctrl+C
+     in its window to close it; if you close the window instead, the leftovers
+     are cleared the next time you try it.)
    - **2) Install it** - adds a Mashup Deck app you can open any time:
      Launchpad and Applications on a Mac, the Start menu and Desktop on
      Windows, the apps menu and Desktop on Linux. It updates itself every time
@@ -245,7 +247,7 @@ first time, which is expected: allow it.
 
 ## Build it yourself
 
-Needs **Python 3.11 or newer**, and ffmpeg:
+Needs **Python 3.11 or 3.12** (3.13 and newer removed a module pydub needs), and ffmpeg:
 `brew install ffmpeg` / `sudo apt install ffmpeg` / `winget install ffmpeg`
 
 ```bash
