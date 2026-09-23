@@ -77,10 +77,14 @@ function Get-File($url, $out, $what) {
   $site = ([System.Uri]$url).Host
   for ($i = 1; $i -le $DownloadTries; $i++) {
     Say "downloading $what from $site (try $i of $DownloadTries)..."
+    Log "download $url (try $i)"
     try {
       Invoke-WebRequest -Uri $url -OutFile $out -TimeoutSec $DownloadTimeoutSec -UseBasicParsing
+      $size = 0; if (Test-Path $out) { $size = (Get-Item $out).Length }
+      Log "downloaded $out : $size bytes"
       return
     } catch {
+      Log "download failed: $($_.Exception.Message)"
       if ($i -lt $DownloadTries) { Say "that did not work ($($_.Exception.Message)) - trying again..." }
     }
   }
@@ -139,8 +143,9 @@ function Get-FolderBytes($path) {
   } catch { return 0 }
 }
 
-# Runs $exe with $argList. Returns 0 on success, the exit code on failure, or
-# -1 if it was stopped because it stalled or ran too long. $watch is a list of
+# Runs $exe with $argList. Returns 0 on success, the exit code on failure,
+# -1 if it was stopped because it stalled or ran too long, or -2 if Windows
+# would not start it at all. $watch is a list of
 # folders whose growth counts as progress (downloads land there).
 function Invoke-Watched($what, $exe, $argList, $watch, $stallMin = 3, $maxMin = 20) {
   $out = Join-Path $env:TEMP ('mashup-step-' + [Guid]::NewGuid().ToString('N').Substring(0, 8))
@@ -148,8 +153,19 @@ function Invoke-Watched($what, $exe, $argList, $watch, $stallMin = 3, $maxMin = 
   Set-Content -Path $stdin -Value '' -Encoding ASCII   # empty input: nothing can sit waiting for a keypress
   $line = ($argList | ForEach-Object { Quote-Arg $_ }) -join ' '
   Log "START $what : $exe $line"
-  $p = Start-Process -FilePath $exe -ArgumentList $line -NoNewWindow -PassThru `
-       -RedirectStandardOutput $stdout -RedirectStandardError $stderr -RedirectStandardInput $stdin
+  try {
+    $p = Start-Process -FilePath $exe -ArgumentList $line -NoNewWindow -PassThru `
+         -RedirectStandardOutput $stdout -RedirectStandardError $stderr -RedirectStandardInput $stdin -ErrorAction Stop
+  } catch {
+    # Windows refused to start it at all: blocked by antivirus, still locked
+    # by a scan, or not a valid program. Keep the reason instead of losing it.
+    $why = $_.Exception.Message
+    if ($_.Exception.InnerException) { $why += ' / ' + $_.Exception.InnerException.Message }
+    Log "END $what : could not start - $why"
+    Say "  | could not start: $why"
+    Remove-Item $stdout, $stderr, $stdin -Force -ErrorAction SilentlyContinue
+    return -2
+  }
   $null = $p.Handle   # Windows PowerShell only reports the exit code if the handle was touched
   $start = Get-Date; $lastMove = $start; $lastSig = ''; $lastBeat = $start; $result = $null
   while (-not $p.HasExited) {
@@ -399,28 +415,156 @@ function Install-Python {
 }
 
 # ── ffmpeg, the one thing pip cannot provide ────────────────────────────────
+# Step 4 used to download one build, run it once, and give up with "ffmpeg was
+# installed but will not run" - no reason on screen, nothing in the log. A fresh
+# 80 MB unsigned exe is exactly what antivirus holds open (or removes) while it
+# scans, and a cut-off download unpacks into an exe Windows cannot start. Now
+# every unpacked file is checked for size, each check runs as a watched process
+# with its error kept in the log, a slow scan gets a few patient retries, and if
+# a build still will not start the next build (a different one) is tried.
+$FfmpegSources = @(
+  @{ Name = 'ffmpeg-static build'; Kind = 'gz';  Url = 'https://github.com/eugeneware/ffmpeg-static/releases/latest/download/{0}-win32-x64.gz' },
+  @{ Name = 'BtbN build';          Kind = 'zip'; Url = 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl-shared.zip' },
+  @{ Name = 'gyan.dev build';      Kind = 'zip'; Url = 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip' }
+)
+
+# gunzip $gz into $exe, then make sure the whole file came out: the last four
+# bytes of a .gz hold the unpacked size, and a Windows program starts with MZ.
+function Expand-Gz($gz, $exe) {
+  $in = [System.IO.File]::OpenRead($gz)
+  try {
+    $in.Seek(-4, [System.IO.SeekOrigin]::End) | Out-Null
+    $b = New-Object byte[] 4
+    $null = $in.Read($b, 0, 4)
+    $want = [BitConverter]::ToUInt32($b, 0)
+    $in.Seek(0, [System.IO.SeekOrigin]::Begin) | Out-Null
+    $out = [System.IO.File]::Create($exe)
+    try {
+      $gzip = New-Object System.IO.Compression.GzipStream($in, [System.IO.Compression.CompressionMode]::Decompress)
+      $gzip.CopyTo($out)
+      $gzip.Dispose()
+    } finally { $out.Dispose() }
+  } finally { $in.Dispose() }
+  $got = (Get-Item $exe).Length
+  Log "unpacked $exe : $got bytes (expected $want)"
+  if (($got % 4294967296) -ne $want) { throw "the download was cut short ($got of $want bytes)" }
+  Test-ExeHeader $exe
+}
+
+function Test-ExeHeader($exe) {
+  $fs = [System.IO.File]::OpenRead($exe)
+  try { $h = New-Object byte[] 2; $null = $fs.Read($h, 0, 2) } finally { $fs.Dispose() }
+  if ($h[0] -ne 0x4D -or $h[1] -ne 0x5A) { throw "$([System.IO.Path]::GetFileName($exe)) is not a Windows program (bad download)" }
+}
+
+# Pull ffmpeg.exe, ffprobe.exe and any DLLs next to them out of a build zip.
+function Expand-FfmpegZip($zip, $tools) {
+  $dir = Join-Path $tools 'ffmpeg-unpack'
+  if (Test-Path $dir) { Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue }
+  New-Item -ItemType Directory -Force -Path $dir | Out-Null
+  try {
+    try {
+      Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction Stop
+      [System.IO.Compression.ZipFile]::ExtractToDirectory($zip, $dir)
+    } catch {
+      Log "ZipFile failed ($($_.Exception.Message)), trying Expand-Archive"
+      Expand-Archive -Path $zip -DestinationPath $dir -Force
+    }
+    $found = Get-ChildItem -Path $dir -Recurse -File -Filter 'ffmpeg.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $found) { throw 'the build did not contain ffmpeg.exe' }
+    $bin = $found.DirectoryName
+    if (-not (Test-Path (Join-Path $bin 'ffprobe.exe'))) { throw 'the build did not contain ffprobe.exe' }
+    foreach ($f in (Get-ChildItem -Path $bin -File | Where-Object { $_.Extension -in '.exe', '.dll' })) {
+      Copy-Item -Path $f.FullName -Destination (Join-Path $tools $f.Name) -Force
+    }
+    Log "copied $((Get-ChildItem -Path $bin -File).Count) file(s) from $bin"
+  } finally {
+    Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
+  }
+}
+
+# Does $exe start and answer -version? Antivirus scanning a brand new exe can
+# make the first launch fail or wait, so give it a few goes with a pause.
+function Test-Tool($exe, $what) {
+  for ($i = 1; $i -le 4; $i++) {
+    if (-not (Test-Path $exe)) {
+      Log "$what check: $exe is gone (antivirus may have removed it)"
+      Say "$what is missing - antivirus may have removed it."
+      return $false
+    }
+    $code = Invoke-Watched "$what check" $exe @('-version') @() 1 3
+    if ($code -eq 0) { return $true }
+    if ($i -lt 4) {
+      Say "$what did not start yet (antivirus may be scanning it) - waiting $(5 * $i)s and trying again..."
+      Start-Sleep -Seconds (5 * $i)
+    }
+  }
+  return $false
+}
+
+# What Windows Security did, if it says (needs admin; skipped quietly if not).
+function Log-Defender {
+  try {
+    $since = (Get-Date).AddMinutes(-30)
+    $hits = Get-MpThreatDetection -ErrorAction Stop | Where-Object { $_.InitialDetectionTime -ge $since }
+    foreach ($d in $hits) { Log "Windows Security detection: $($d.Resources -join ', ') at $($d.InitialDetectionTime)" }
+    if (-not $hits) { Log 'Windows Security: no detections in the last 30 minutes' }
+  } catch { Log "Windows Security history not readable: $($_.Exception.Message)" }
+}
+
+function Remove-Ffmpeg($tools) {
+  foreach ($n in 'ffmpeg.exe', 'ffprobe.exe', 'ffmpeg.gz', 'ffprobe.gz', 'ffmpeg.zip') {
+    Remove-Item (Join-Path $tools $n) -Force -ErrorAction SilentlyContinue
+  }
+}
+
 function Install-Ffmpeg {
   $ffmpeg  = Join-Path $Tools 'ffmpeg.exe'
   $ffprobe = Join-Path $Tools 'ffprobe.exe'
   if ((Test-Path $ffmpeg) -and (Test-Path $ffprobe)) {
-    Say '[4/5] ffmpeg is already here'
+    Say '[4/5] checking the ffmpeg that is already here...'
+    if ((Test-Tool $ffmpeg 'ffmpeg') -and (Test-Tool $ffprobe 'ffprobe')) { Say 'ffmpeg ready.'; return }
+    Say 'that ffmpeg will not start, so getting a fresh one.'
   } else {
     Say '[4/5] installing ffmpeg'
-    $base = 'https://github.com/eugeneware/ffmpeg-static/releases/latest/download'
-    foreach ($tool in 'ffmpeg', 'ffprobe') {
-      $gz  = Join-Path $Tools "$tool.gz"
-      $exe = Join-Path $Tools "$tool.exe"
-      Get-File "$base/$tool-win32-x64.gz" $gz "$tool (tens of MB)"
-      Say "unpacking $tool..."
-      $in  = [System.IO.File]::OpenRead($gz)
-      $out = [System.IO.File]::Create($exe)
-      $gzip = New-Object System.IO.Compression.GzipStream($in, [System.IO.Compression.CompressionMode]::Decompress)
-      $gzip.CopyTo($out)
-      $gzip.Dispose(); $out.Dispose(); $in.Dispose()
-      Remove-Item $gz -Force
-    }
   }
-  if ((Run $ffmpeg -version) -ne 0) { Fail 'ffmpeg was installed but will not run' }
+  $n = 0
+  foreach ($src in $FfmpegSources) {
+    $n++
+    Remove-Ffmpeg $Tools
+    if ($n -gt 1) { Say "trying another ffmpeg build ($($src.Name))..." }
+    Log "ffmpeg source $n : $($src.Name)"
+    try {
+      if ($src.Kind -eq 'gz') {
+        foreach ($tool in 'ffmpeg', 'ffprobe') {
+          $gz  = Join-Path $Tools "$tool.gz"
+          $exe = Join-Path $Tools "$tool.exe"
+          Get-File ($src.Url -f $tool) $gz "$tool (about 30 MB)"
+          Say "unpacking $tool..."
+          Expand-Gz $gz $exe
+          Remove-Item $gz -Force -ErrorAction SilentlyContinue
+        }
+      } else {
+        $zip = Join-Path $Tools 'ffmpeg.zip'
+        Get-File $src.Url $zip 'ffmpeg (about 100 MB)'
+        Say 'unpacking ffmpeg...'
+        Expand-FfmpegZip $zip $Tools
+        Remove-Item $zip -Force -ErrorAction SilentlyContinue
+      }
+    } catch {
+      $m = $_.Exception.Message; if ($m -like 'MASHUP: *') { $m = $m.Substring(8) }
+      Log "ffmpeg source $n failed: $m"
+      Say "that did not work: $m"
+      continue
+    }
+    Say 'checking ffmpeg starts (antivirus may scan it the first time)...'
+    if ((Test-Tool $ffmpeg 'ffmpeg') -and (Test-Tool $ffprobe 'ffprobe')) { Say 'ffmpeg ready.'; return }
+    Log-Defender
+  }
+  Fail ("ffmpeg would not start on this computer, from any of the $($FfmpegSources.Count) places tried.`n" +
+        "  This is almost always antivirus. Open Windows Security > Virus & threat protection >`n" +
+        "  Protection history; if ffmpeg.exe is listed, choose Allow, then run the same command again.`n" +
+        "  The details are in $LogFile - send that file to whoever shared the app.")
 }
 
 # PowerShell 5 reads a .ps1 without a byte order mark as the old ANSI code
@@ -505,7 +649,21 @@ Update-App
 # stale. Refreshing on every start keeps it working.
 if ($env:MASHUP_UPDATE -ne '0') {
   Write-Host '  checking yt-dlp is current...'
-  & $Uv pip install --quiet --python $Py --upgrade 'yt-dlp[default]' deno 2>&1 | Out-Null
+  # Watched with a time limit: a stuck network or a lock must not keep the
+  # app from starting. The copy already installed is fine to start with.
+  try {
+    $o = Join-Path $env:TEMP 'mashup-ytdlp-check'
+    Set-Content -Path "$o.in" -Value '' -Encoding ASCII
+    $a = 'pip install --quiet --python "' + $Py + '" --upgrade "yt-dlp[default]" deno'
+    $p = Start-Process -FilePath $Uv -ArgumentList $a -NoNewWindow -PassThru -ErrorAction Stop `
+         -RedirectStandardOutput "$o.out" -RedirectStandardError "$o.err" -RedirectStandardInput "$o.in"
+    $null = $p.Handle
+    if (-not $p.WaitForExit(120000)) {
+      & taskkill.exe /T /F /PID $p.Id 2>&1 | Out-Null
+      Write-Host '  (that was slow, so starting with the copy already here)'
+    }
+    Remove-Item "$o.in", "$o.out", "$o.err" -Force -ErrorAction SilentlyContinue
+  } catch {}
 }
 
 Set-Location (Join-Path $Root 'app')
@@ -684,7 +842,9 @@ try {
   Install-Python
   Install-Ffmpeg
   Say '[5/5] getting it ready to start'
+  Log 'step 5: writing the launcher'
   Write-Launcher
+  Log 'step 5: launcher written'
 
   if ($Mode -eq 'install') {
     Install-Shortcuts
