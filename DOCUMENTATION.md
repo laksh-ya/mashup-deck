@@ -460,8 +460,9 @@ avoiding:
   phone should open. That address is ranked across every interface rather than
   taken from the default route, because with a VPN up the default route answers
   with the VPN's address and a phone cannot reach it.
-* **Everything in one folder**, no PATH edits, no sudo, so uninstalling is
-  deleting `~/.mashup-deck` and the launcher.
+* **Everything in one folder**, no PATH edits, no sudo or admin. The installer
+  writes an uninstaller that removes that folder and every shortcut it made
+  (`~/.mashup-deck/uninstall.sh` on Mac and Linux, Settings > Apps on Windows).
 
 The one thing the installer cannot do is fetch from a private repo. The URL in the
 README has to be public, or the tarball hosted somewhere that is.
