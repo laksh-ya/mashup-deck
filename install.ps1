@@ -146,7 +146,7 @@ function Install-Python {
   }
   # On ARM Windows use the x64 Python: every library (and ffmpeg) exists for it,
   # and Windows runs it fine.
-  $want = if ($IsArm) { 'cpython-3.11-windows-x86_64-none' } else { $PythonVersion }
+  $want = if ($IsArm) { "cpython-$PythonVersion-windows-x86_64-none" } else { $PythonVersion }
   if ((Run $Uv venv --quiet --clear --python $want $Venv) -ne 0) { Fail 'Could not set up Python' }
   Say "[3/5] installing the app's libraries and deno"
   # yt-dlp[default] brings yt-dlp-ejs, the solver for YouTube's JavaScript
@@ -389,7 +389,7 @@ function Start-App {
 
 # ── main ────────────────────────────────────────────────────────────────────
 $saved = @{}
-foreach ($n in 'UV_PYTHON_INSTALL_DIR', 'UV_CACHE_DIR', 'UV_NO_MODIFY_PATH') {
+foreach ($n in 'UV_PYTHON_INSTALL_DIR', 'UV_CACHE_DIR') {
   $saved[$n] = [Environment]::GetEnvironmentVariable($n, 'Process')
 }
 $Mode = ''
