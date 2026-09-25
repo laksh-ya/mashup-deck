@@ -2572,3 +2572,15 @@ body { line-height: 1.5; }
   .sticker-label { display: none; }
   .sticker { font-size: .76rem; }
 }
+
+/* ── phone: keep the i knob and the sleeve's close button off "Deck" ── */
+@media (max-width: 760px) {
+  .brass h1 { font-size: min(6.3vw, 2rem); }
+}
+@media (max-width: 359px) {
+  .brass h1 { font-size: min(7.6vw, 2rem); }
+}
+@media (max-width: 420px) {
+  .sleeve-lock { padding-right: 2.2rem; }
+  .sleeve-name { font-size: min(7vw, 2.05rem); }
+}

@@ -1,0 +1,613 @@
+/* Copied from the app (static/style.css) so the nameplate and the About
+   sleeve look and behave exactly the same. Keep in step with the app. */
+
+
+/* ── top plate + brass nameplate ──────────────────────────── */
+
+.plate {
+  position: relative;
+  display: flex; align-items: center; gap: 1rem;
+  padding: clamp(1rem, 3vw, 1.5rem) clamp(1.6rem, 4vw, 2.2rem);
+  margin-bottom: clamp(.7rem, 2vw, 1rem);
+
+  background-color: var(--steel);
+  background-image:
+    linear-gradient(103deg, rgba(255,255,255,.32) 0 14%, transparent 28% 72%, rgba(255,255,255,.18) 90%),
+    repeating-linear-gradient(90deg,
+      rgba(255,255,255,.10) 0 1px, transparent 1px 2px,
+      rgba(0,0,0,.08) 2px 3px, transparent 3px 5px),
+    linear-gradient(168deg, var(--steel-l), var(--steel) 44%, var(--steel-d));
+  border-radius: var(--r-m);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.65),
+    inset 0 -2px 6px rgba(0,0,0,.45),
+    0 3px 0 rgba(0,0,0,.35),
+    0 14px 26px -14px rgba(0,0,0,.75);
+}
+.plate-main { flex: 1; min-width: 0; }
+
+.brass {
+  display: inline-flex; align-items: center; gap: clamp(.5rem, 1.6vw, .8rem);
+  padding: .3rem clamp(.8rem, 2.4vw, 1.4rem) .45rem;
+  transition: transform .5s var(--pop);
+}
+.brass:hover { transform: rotate(-.7deg) translateY(-1px); }
+
+/* the logo: a record with a lit label, turning */
+.mark {
+  position: relative; flex: none;
+  width: clamp(30px, 6vw, 46px); height: clamp(30px, 6vw, 46px);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 50%, #2a1c10 0 22%, #17120e 22% 34%, #100c09 34%),
+    repeating-radial-gradient(circle at 50% 50%, rgba(255,226,190,.20) 0 1px, transparent 1px 3px);
+  box-shadow: inset 0 0 0 1.5px rgba(0,0,0,.6), inset 0 2px 4px rgba(0,0,0,.6), 0 1px 0 rgba(255,240,200,.5);
+}
+.mark i {
+  position: absolute; inset: 30%;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, var(--tangerine) 0 25%, var(--gold) 25% 50%, var(--tangerine) 50% 75%, var(--gold) 75%);
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.5);
+  animation: spin 3.6s linear infinite;
+}
+.mark::after {
+  content: ''; position: absolute; left: 50%; top: 50%;
+  width: 13%; height: 13%; border-radius: 50%; transform: translate(-50%, -50%);
+  background: #f6e6c4; z-index: 2;
+}
+.mark.big { width: 54px; height: 54px; }
+
+.wordmark {
+  display: flex; align-items: baseline;
+  gap: .28em; flex-wrap: wrap;
+  min-width: 0;
+  border-radius: 8px;
+  background-image:
+    linear-gradient(176deg, rgba(255,255,255,.55), transparent 40%),
+    linear-gradient(168deg, var(--brass-l), var(--brass) 48%, var(--brass-d));
+  box-shadow:
+    inset 0 1px 0 rgba(255,248,220,.9),
+    inset 0 -2px 4px rgba(80,50,0,.55),
+    0 2px 0 #5c3d0a,
+    0 8px 16px -8px rgba(0,0,0,.7);
+}
+.brass h1 {
+  margin: 0;
+  font-family: 'Shrikhand', Georgia, serif;
+  font-weight: 400;
+  font-size: clamp(1.65rem, 6.2vw, 3.6rem);
+  line-height: .98;
+  letter-spacing: .005em;
+  color: #2e1c02;
+  /* engraved into the metal */
+  text-shadow:
+    0 1px 0 rgba(255,240,200,.72),
+    0 -1px 1px rgba(60,38,0,.5);
+}
+
+.underline {
+  position: absolute; left: 0; right: -4px; bottom: -9px;
+  width: 100%; height: 11px; overflow: visible;
+}
+.underline path {
+  fill: none; stroke: var(--tangerine); stroke-width: 3.2;
+  stroke-linecap: round;
+  stroke-dasharray: 260; stroke-dashoffset: 260;
+  animation: draw 1.1s var(--ease) .45s forwards;
+}
+@keyframes draw { to { stroke-dashoffset: 0 } }
+
+/* chrome toggle knob (mute) */
+.knob-btn {
+  flex: none;
+  width: 52px; height: 52px; border-radius: 50%;
+  border: 0; cursor: pointer; padding: 0;
+  display: grid; place-items: center;
+  background-image:
+    linear-gradient(180deg, rgba(255,255,255,.75), transparent 46%),
+    /* knurled edge */
+    repeating-conic-gradient(from 0deg, rgba(0,0,0,.30) 0 3deg, rgba(255,255,255,.24) 3deg 6deg),
+    radial-gradient(circle at 38% 30%, var(--chrome-h), var(--steel) 62%, var(--steel-d));
+  box-shadow:
+    inset 0 1px 1px rgba(255,255,255,.9),
+    inset 0 -3px 5px rgba(0,0,0,.5),
+    0 3px 0 #3f3a34,
+    0 9px 16px -7px rgba(0,0,0,.8);
+  transition: transform .16s var(--ease), box-shadow .16s var(--ease);
+}
+.knob-btn:active { transform: translateY(3px); box-shadow: inset 0 1px 1px rgba(255,255,255,.7), inset 0 -2px 4px rgba(0,0,0,.5), 0 0 0 #3f3a34; }
+/* a lowercase i on a disc inlaid into the metal */
+.knob-i {
+  display: grid; place-items: center;
+  width: 26px; height: 26px; border-radius: 50%;
+  font-family: 'Shrikhand', Georgia, serif;
+  font-size: 17px; line-height: 1;
+  padding-bottom: 3px;
+  color: #fbf1dc;
+  background-image:
+    linear-gradient(180deg, rgba(0,0,0,.5), transparent 60%),
+    radial-gradient(circle at 42% 34%, #453c33, #16120f 78%);
+  box-shadow:
+    inset 0 2px 3px rgba(0,0,0,.9),
+    inset 0 -1px 0 rgba(255,255,255,.14),
+    0 1px 0 rgba(255,255,255,.62);
+  pointer-events: none;
+  transition: background-image .2s, color .2s;
+}
+.knob-btn[aria-expanded="true"] .knob-i {
+  color: #fff0e6;
+  background-image:
+    linear-gradient(180deg, rgba(0,0,0,.42), transparent 60%),
+    radial-gradient(circle at 42% 34%, #d8461c, #7d1c07 80%);
+}
+@media (max-width: 760px) {
+  .knob-i { width: 23px; height: 23px; font-size: 15px; }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   ABOUT: a record sleeve that slides out over everything
+   ══════════════════════════════════════════════════════════════ */
+
+.scrim {
+  position: fixed; inset: 0; z-index: 90;
+  display: grid; place-items: center;
+  padding: clamp(.9rem, 4vw, 2rem);
+  background: rgba(14,9,7,.62);
+  backdrop-filter: blur(14px) saturate(.8);
+  -webkit-backdrop-filter: blur(14px) saturate(.8);
+  animation: scrimIn .32s var(--ease) both;
+  overflow-y: auto;
+}
+@keyframes scrimIn { from { opacity: 0; backdrop-filter: blur(0) } }
+.scrim.closing { animation: scrimOut .24s var(--ease) both; }
+@keyframes scrimOut { to { opacity: 0 } }
+
+.sleeve {
+  position: relative;
+  width: min(430px, 100%);
+  padding: clamp(1.5rem, 5vw, 2.2rem) clamp(1.3rem, 5vw, 2.2rem) clamp(1.3rem, 4vw, 1.8rem);
+  border-radius: 4px 14px 14px 4px;
+  /* printed card stock: warm paper, a spine down the left, a soft top light */
+  background-color: #f6ead0;
+  background-image:
+    linear-gradient(90deg, rgba(90,60,20,.22) 0 3px, rgba(255,255,255,.5) 3px 9px, transparent 9px 100%),
+    radial-gradient(120% 70% at 50% -10%, rgba(255,255,255,.85), transparent 60%),
+    repeating-linear-gradient(122deg, rgba(140,110,60,.045) 0 2px, transparent 2px 5px),
+    linear-gradient(166deg, #fdf5e2, #e3d3ac);
+  box-shadow:
+    inset 0 0 0 1px rgba(120,95,50,.34),
+    inset 0 1px 0 rgba(255,255,255,.9),
+    0 30px 60px -20px rgba(0,0,0,.85),
+    0 4px 0 rgba(0,0,0,.35);
+  animation: sleeveIn .5s var(--pop) both;
+  transform-origin: 12% 50%;
+}
+@keyframes sleeveIn {
+  from { opacity: 0; transform: translateY(26px) rotate(-2.4deg) scale(.9) }
+}
+.scrim.closing .sleeve { animation: sleeveOut .24s var(--ease) both; }
+@keyframes sleeveOut { to { opacity: 0; transform: translateY(14px) scale(.96) } }
+
+/* the punched hole at the top of the spine */
+.sleeve-hole {
+  position: absolute; top: 14px; left: 15px;
+  width: 9px; height: 9px; border-radius: 50%;
+  background: rgba(70,45,15,.4);
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.6), 0 1px 0 rgba(255,255,255,.7);
+}
+
+.sleeve-x {
+  position: absolute; top: 12px; right: 12px;
+  width: 34px; height: 34px; border: 0; cursor: pointer;
+  border-radius: 50%; display: grid; place-items: center;
+  background-image:
+    linear-gradient(180deg, rgba(255,255,255,.75), transparent 48%),
+    radial-gradient(circle at 38% 32%, var(--chrome-h), var(--steel) 62%, var(--steel-d));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.9), 0 2px 0 #3f3a34, 0 5px 10px -4px rgba(0,0,0,.7);
+  transition: transform .3s var(--pop);
+}
+.sleeve-x svg { width: 15px; height: 15px; fill: none; stroke: #2c2620; stroke-width: 2.4; stroke-linecap: round; }
+.sleeve-x:hover { transform: rotate(90deg); }
+.sleeve-x:active { transform: rotate(90deg) translateY(2px) scale(.94); box-shadow: inset 0 1px 0 rgba(255,255,255,.8), 0 0 0 #3f3a34; }
+
+/* the record poking out of the sleeve, turning slowly */
+.sleeve-disc {
+  position: absolute; top: 50%; right: -46px; transform: translateY(-50%);
+  width: 96px; height: 96px; border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 50%, #c9701f 0 17px, #17120e 17px 20px, #1c1610 20px),
+    repeating-radial-gradient(circle at 50% 50%, rgba(255,226,190,.10) 0 1px, transparent 1px 3px);
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.6), 0 8px 18px -8px rgba(0,0,0,.9);
+  animation: spin 9s linear infinite;
+  z-index: -1;
+}
+.sleeve-disc span {
+  position: absolute; inset: 0; border-radius: 50%;
+  background: linear-gradient(120deg, transparent 40%, rgba(255,220,180,.16) 50%, transparent 60%);
+}
+
+.sleeve-kicker {
+  margin: 0 0 .5rem;
+  font-family: 'Space Mono', monospace;
+  font-size: .62rem; letter-spacing: .17em; text-transform: uppercase;
+  color: #8a7550;
+}
+
+/* ── the signature ──────────────────────────────────────────── */
+
+.sleeve-made {
+  margin: 0 0 .1rem;
+  font-family: 'Shrikhand', Georgia, serif; font-weight: 400;
+  font-size: clamp(1.35rem, 4.4vw, 1.8rem); line-height: 1.1;
+  color: #2e1c02;
+}
+.signature {
+  position: relative;
+  display: inline-block;
+  text-decoration: none;
+  font-family: 'Caveat', cursive;
+  font-weight: 700;
+  font-size: clamp(2.5rem, 9vw, 3.6rem);
+  line-height: .95;
+  color: #b8340f;
+  padding: 0 .12em .1em;
+  transition: transform .4s var(--pop), color .25s var(--ease);
+}
+.sig-ink { position: relative; z-index: 2; display: inline-block; }
+/* the pen stroke draws itself under the name */
+.sig-line {
+  position: absolute; left: 0; right: 0; bottom: .04em;
+  width: 100%; height: .3em; overflow: visible; z-index: 1;
+}
+.sig-line path {
+  fill: none; stroke: var(--tangerine); stroke-width: 6;
+  stroke-linecap: round;
+  stroke-dasharray: 300; stroke-dashoffset: 300;
+  transition: stroke-dashoffset .55s var(--ease);
+}
+.signature:hover, .signature:focus-visible {
+  transform: rotate(-2.5deg) scale(1.06);
+  color: #8d1f05;
+}
+.signature:hover .sig-line path,
+.signature:focus-visible .sig-line path { stroke-dashoffset: 0; }
+/* each letter lifts a little on hover, staggered */
+.sig-ink span {
+  display: inline-block;
+  transition: transform .38s var(--pop);
+}
+.signature:hover .sig-ink span { transform: translateY(-.1em) rotate(-4deg); }
+.signature:hover .sig-ink span:nth-child(2n) { transform: translateY(.08em) rotate(5deg); }
+.signature:hover .sig-ink span:nth-child(3n) { transform: translateY(-.16em) rotate(-2deg); }
+
+.sleeve-ded {
+  margin: .9rem 0 1.2rem;
+  max-width: 34ch;
+  font-family: 'Caveat', cursive;
+  font-size: clamp(1.15rem, 3.4vw, 1.4rem);
+  line-height: 1.3;
+  color: #1e3f6b;
+  transform: rotate(-.5deg);
+}
+
+/* ── the little tabs ────────────────────────────────────────── */
+
+.sleeve-row { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+
+.tag {
+  width: 46px; height: 46px;
+  border: 0; cursor: pointer; padding: 0;
+  display: grid; place-items: center;
+  border-radius: 12px;
+  text-decoration: none;
+  background-image:
+    linear-gradient(180deg, rgba(255,255,255,.8), rgba(255,255,255,.05) 52%, rgba(0,0,0,.05)),
+    linear-gradient(168deg, #f3e6c8, #cdb98f);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.95),
+    inset 0 -2px 3px rgba(120,90,40,.28),
+    0 3px 0 #8d7b56,
+    0 7px 14px -7px rgba(0,0,0,.7);
+  transition: transform .32s var(--pop), box-shadow .18s, filter .18s;
+}
+.tag svg { width: 21px; height: 21px; fill: none; stroke: #3d2c12; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+#link-github svg { fill: #3d2c12; stroke: none; }
+.tag:hover { transform: translateY(-4px) rotate(-3deg); filter: brightness(1.05); }
+.tag:active { transform: translateY(2px) scale(.95); box-shadow: inset 0 1px 0 rgba(255,255,255,.8), 0 0 0 #8d7b56; }
+
+/* the sound switch lives in here now */
+.tag.sfx { margin-left: auto; }
+.tag.sfx .spk { fill: #3d2c12; stroke: none; }
+.tag.sfx .cross { display: none; }
+.tag.sfx[aria-pressed="true"] .waves { display: none; }
+.tag.sfx[aria-pressed="true"] .cross { display: block; }
+.tag.sfx[aria-pressed="true"] svg { stroke: #8d2418; }
+.tag.sfx[aria-pressed="true"] .spk { fill: #8d2418; }
+.tag.sfx[aria-pressed="true"] { filter: saturate(.55) brightness(.95); }
+
+.sleeve-toast {
+  margin: .8rem 0 0;
+  font-family: 'Space Mono', monospace; font-size: .68rem;
+  letter-spacing: .1em; text-transform: uppercase;
+  color: #14543c;
+  animation: bayIn .3s var(--ease) both;
+}
+
+.rail-foot {
+  display: flex; justify-content: center;
+  padding: .25rem 0 .1rem;
+}
+.credits {
+  border: 0; cursor: pointer;
+  background: transparent;
+  font-family: 'Caveat', cursive; font-size: 1.18rem;
+  color: rgba(255,224,180,.5);
+  padding: .3rem .9rem;
+  border-radius: 999px;
+  transition: color .2s, transform .35s var(--pop), background .2s;
+}
+.credits:hover {
+  color: var(--gold);
+  background: rgba(255,224,180,.08);
+  transform: rotate(-1.6deg) scale(1.06);
+}
+
+/* ── about: logo lockup + the ask line ────────────────────── */
+
+.sleeve-logo { display: flex; align-items: center; gap: .8rem; margin-bottom: 1rem; }
+.sleeve-lock { min-width: 0; }
+.sleeve-name {
+  margin: 0;
+  font-family: 'Shrikhand', Georgia, serif; font-weight: 400;
+  font-size: clamp(1.5rem, 5.4vw, 2.05rem); line-height: 1;
+  color: #2e1c02;
+}
+.sleeve-tag {
+  margin: .18rem 0 0;
+  font-family: 'Caveat', cursive; font-size: 1.12rem;
+  color: #6a5330;
+}
+.sleeve-made { margin: 0 0 .1rem; }
+.sleeve-ask {
+  margin: 1.1rem 0 .55rem;
+  font-family: 'Baloo 2', 'Trebuchet MS', sans-serif; font-weight: 600; font-size: .84rem;
+  color: #55401f;
+}
+
+/* ── extra fidget, kept small ─────────────────────────────── */
+
+.tab { transition: transform .4s var(--pop); }
+.bay:hover .tab { transform: rotate(-6deg) scale(1.06); }
+.screw { transition: transform .6s var(--ease); }
+.plate:hover .screw, .tapedeck:hover .screw { transform: rotate(38deg); }
+/* the reels wind faster when you reach for the deck */
+.cassette { transition: transform .5s var(--pop); }
+.cassette:hover { transform: rotate(-.6deg) translateY(-3px); }
+.lcd-row b { transition: text-shadow .25s var(--ease); }
+.lcd:hover .lcd-row b { text-shadow: 0 0 14px rgba(134,255,212,1); }
+.strip-title { transition: color .2s; }
+.strip:hover .strip-title { color: #7a3a10; }
+
+
+
+@media (max-width: 760px) {
+  .sleeve { border-radius: 4px 12px 12px 4px; }
+  .sleeve-disc { display: none; }
+  .tag { width: 44px; height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sleeve-disc { animation: none !important; }
+  .sig-line path { stroke-dashoffset: 0 !important; }
+}
+@media (max-width: 760px) {
+  .plate {
+    display: flex; align-items: flex-start; gap: .7rem;
+    flex-wrap: nowrap;
+    padding: .9rem .9rem 1rem;
+  }
+  .plate-main { flex: 1 1 auto; min-width: 0; }
+  .knob-btn { position: static; flex: none; width: 42px; height: 42px; align-self: flex-start; }
+  .knob-i { font-size: 19px; }
+  .screw.tl, .screw.tr { display: none; }
+  .brass { display: flex; align-items: center; gap: .5rem; padding: .35rem .7rem .45rem; max-width: 100%; }
+  .mark { width: 34px; height: 34px; }
+  .underline { bottom: -7px; height: 8px; }
+  .sleeve-logo { gap: .6rem; }
+  .mark.big { width: 44px; height: 44px; }
+  .credits { font-size: 1.1rem; }
+}
+@media (max-width: 380px) { .mark { width: 30px; height: 30px; } }
+@media (prefers-reduced-motion: reduce) { .mark i { animation: none !important; } }
+
+
+
+/* on a touch screen there is no hover, so the stroke is simply already there */
+@media (hover: none) {
+  .sleeve .sig-line path { stroke-dashoffset: 0; }
+}
+
+/* ── the same fidgets, but for a finger ───────────────────── */
+
+/* JS adds .poked on press, mirroring every :hover flourish so phones get
+   the same moment. */
+.brass.poked { transform: rotate(-.7deg) translateY(-1px); }
+.plate.poked .screw { transform: rotate(38deg); }
+.cassette.poked { transform: rotate(-.6deg) translateY(-3px); }
+.lcd.poked .lcd-row b { text-shadow: 0 0 14px rgba(134,255,212,1); }
+.bay.poked .tab { transform: rotate(-6deg) scale(1.06); }
+.strip.poked .strip-title { color: #7a3a10; }
+.credits.poked { color: var(--gold); background: rgba(255,224,180,.08); transform: rotate(-1.6deg) scale(1.06); }
+.tag.poked { transform: translateY(-4px) rotate(-3deg); }
+
+/* the signature: the stroke lands when the card opens, so it is never missed,
+   and the letters scatter on hover or on tap */
+.sleeve.shown .sig-line path { stroke-dashoffset: 0; }
+.signature.poked { transform: rotate(-2.5deg) scale(1.06); color: #8d1f05; }
+.signature.poked .sig-ink span { transform: translateY(-.1em) rotate(-4deg); }
+.signature.poked .sig-ink span:nth-child(2n) { transform: translateY(.08em) rotate(5deg); }
+.signature.poked .sig-ink span:nth-child(3n) { transform: translateY(-.16em) rotate(-2deg); }
+
+
+/* ── phone ────────────────────────────────────────────────── */
+
+@media (max-width: 760px) {
+  /* the wordmark stays on one line, it is the name of the thing */
+  /* nowrap on the text is not enough: the two words are flex items, so the
+     flex container has to be told not to wrap them either */
+  .wordmark {
+    flex-direction: row; align-items: baseline;
+    gap: .26em; flex-wrap: nowrap; white-space: nowrap;
+  }
+  .brass h1 { font-size: clamp(1.05rem, 5.6vw, 1.7rem); line-height: 1; }
+
+}
+
+@media (max-width: 380px) {
+  .brass h1 { font-size: 5.4vw; }
+}
+
+
+@media (prefers-reduced-motion: reduce) {
+  .tx-hot::after { transform: scaleX(1) !important; animation: none !important; }
+  .tagline-x span { opacity: 1 !important; transform: none !important; animation: none !important; }
+}
+
+/* ROUND 10: the line that says what this is, up in the header
+   ══════════════════════════════════════════════════════════════ */
+
+/* Handwriting for the sentence, the display face only for the word on the
+   plate. Caveat is narrow, which is also what lets the whole line stay on one
+   row down to a 320px screen. */
+.tagline-x {
+  position: relative;
+  display: flex; align-items: baseline;
+  flex-wrap: nowrap; white-space: nowrap;
+  gap: .2em;
+  margin: .55rem 0 0;
+  font-family: 'Caveat', cursive;
+  font-weight: 700;
+  font-size: clamp(1.12rem, 5.6vw, 2.1rem);
+  line-height: 1.1;
+  color: #1a1208;
+  letter-spacing: .004em;
+}
+.tx-a { flex: none; }
+/* each word drops in, left to right */
+.tagline-x span {
+  opacity: 0;
+  animation: riseWord .55s var(--ease) forwards;
+}
+.tagline-x span:nth-child(1) { animation-delay: .16s; }
+.tagline-x span:nth-child(2) { animation-delay: .27s; }
+.tagline-x span:nth-child(3) { animation-delay: .38s; }
+@keyframes riseWord {
+  from { opacity: 0; transform: translateY(.3em) }
+  to   { opacity: 1; transform: none }
+}
+/* the plate keeps its tilt when it settles */
+.tagline-x .tx-hot { animation-name: riseLabel; }
+@keyframes riseLabel {
+  from { opacity: 0; transform: translateY(.3em) rotate(-5deg) }
+  to   { opacity: 1; transform: rotate(-1.4deg) }
+}
+
+/* the word that matters, on its own hot plate. dark ink on the plate rather
+   than cream, because cream on orange does not hold up at this weight */
+.tx-hot {
+  position: relative;
+  flex: none;
+  font-family: 'Shrikhand', Georgia, serif; font-weight: 400;
+  font-size: .74em;
+  color: #3d1500;
+  padding: .1em .34em .16em;
+  border-radius: 5px;
+  transform: rotate(-1.4deg);
+  background-image:
+    linear-gradient(180deg, rgba(255,255,255,.6), transparent 56%),
+    linear-gradient(168deg, var(--gold), #ff8a45);
+  box-shadow:
+    inset 0 1px 0 rgba(255,244,214,.95),
+    0 2px 0 #a8460f,
+    0 6px 14px -6px rgba(216,69,26,.6);
+  text-shadow: 0 1px 0 rgba(255,235,200,.5);
+}
+/* a slow glint travelling across it, so the eye lands there */
+.tx-hot::after {
+  content: '';
+  position: absolute; inset: 0;
+  border-radius: 5px;
+  background: linear-gradient(105deg, transparent 36%, rgba(255,255,255,.42) 50%, transparent 64%);
+  transform: translateX(-115%);
+  animation: glint 5.5s var(--ease) 1.4s infinite;
+  pointer-events: none;
+}
+@keyframes glint {
+  0% { transform: translateX(-115%) }
+  22%, 100% { transform: translateX(115%) }
+}
+
+.tagline-x .underline {
+  bottom: -.42em;
+  animation: none;
+}
+.tagline-x .underline path {
+  animation: draw 1s var(--ease) .75s forwards;
+}
+
+/* touching the line gives it a nudge */
+.plate:hover .tx-hot, .plate.poked .tx-hot { filter: brightness(1.07); }
+
+/* ── the nameplate deserves its size back on a phone ─────── */
+
+@media (max-width: 760px) {
+  /* the i button moves to the plate corner so the wordmark gets the width */
+  .plate { position: relative; padding: .85rem 3.6rem .95rem .85rem; }
+  .plate-main { flex: 1 1 auto; min-width: 0; }
+  .knob-btn {
+    position: absolute; top: .8rem; right: .8rem;
+    width: 42px; height: 42px;
+  }
+
+  .brass { padding: .3rem .6rem .42rem; gap: .45rem; }
+  /* as big as fits on one line, which is a lot more than before */
+  .brass h1 { font-size: min(7.4vw, 2rem); line-height: 1.04; }
+  .mark { width: 30px; height: 30px; }
+
+  .tagline-x {
+    /* sized from measurement: leaves about 6% slack at 320px, so a font
+       metric wobble can never clip it, while staying readable */
+    font-size: min(5.9vw, 1.6rem);
+    gap: .2em;
+    margin-top: .5rem;
+  }
+  .tx-hot { padding: .04em .3em .1em; }
+}
+
+/* below 360 the little record costs more width than it earns */
+@media (max-width: 359px) {
+  .brass .mark { display: none; }
+  .brass h1 { font-size: min(8.6vw, 2rem); }
+}
+
+/* ── about: name, then what it is, then who ───────────────── */
+
+.sleeve-tag { color: #6a5330; }
+
+@media (max-width: 760px) {
+  .plate { padding: .85rem .72rem .95rem; }
+  .brass { margin-right: 3.1rem; }
+  .tagline-x { gap: .22em; }
+}
+/* ── site only: the i knob sat on "Deck" at phone widths ─── */
+
+@media (max-width: 760px) {
+  .brass h1 { font-size: min(6.3vw, 2rem); }
+}
+@media (max-width: 359px) {
+  .brass h1 { font-size: min(7.6vw, 2rem); }
+}
+/* the close button sat on "Deck" in the sleeve on narrow phones */
+@media (max-width: 420px) {
+  .sleeve-lock { padding-right: 2.2rem; }
+  .sleeve-name { font-size: min(7vw, 2.05rem); }
+}

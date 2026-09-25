@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mashup Deck</title>
+<meta name="description" content="Write which songs and which parts. Mashup Deck finds them, cuts them and joins them into one mp3. Free for Mac, Windows and Linux." />
+<meta property="og:title" content="Mashup Deck" />
+<meta property="og:description" content="Name the songs. Mark the parts. Get one mp3." />
+<meta name="theme-color" content="#140f0c" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><circle cx=%2250%22 cy=%2250%22 r=%2248%22 fill=%22%23140f0c%22/><circle cx=%2250%22 cy=%2250%22 r=%2232%22 fill=%22none%22 stroke=%22%23ff7a2f%22 stroke-width=%223%22/><circle cx=%2250%22 cy=%2250%22 r=%2210%22 fill=%22%23ffc247%22/></svg>" />
+<link rel="preload" href="fonts/shrikhand-400-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="fonts/baloo-2-400-800-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="stylesheet" href="style.css" />
+<link rel="stylesheet" href="plate.css" />
+</head>
+<body>
+
+<canvas id="stage" aria-hidden="true"></canvas>
+<div class="grain" aria-hidden="true"></div>
+
+<main class="console">
+
+  <header class="plate">
+    <span class="screw tl" aria-hidden="true"></span>
+    <span class="screw tr" aria-hidden="true"></span>
+
+    <div class="plate-main">
+      <div class="brass">
+        <span class="mark" aria-hidden="true"><i></i></span>
+        <h1 class="wordmark"><span>Mashup</span> <span>Deck</span></h1>
+      </div>
+      <p class="tagline-x">
+        <span class="tx-a">make</span>
+        <span class="tx-hot">mashups</span>
+        <span class="tx-a">from song links</span>
+        <svg class="underline" viewBox="0 0 220 12" preserveAspectRatio="none" aria-hidden="true">
+          <path d="M2 8 C 40 2, 70 10, 110 5 S 180 2, 218 7" />
+        </svg>
+      </p>
+    </div>
+
+    <button class="knob-btn" id="btn-info" aria-label="About Mashup Deck" aria-expanded="false">
+      <span class="knob-i">i</span>
+    </button>
+  </header>
+
+  <!-- ══ what it is ══ -->
+  <section class="bay hero">
+    <h2 class="headline">Name the songs.<br>Mark the parts.<br><em>Get one mp3.</em></h2>
+    <p class="lede">Write which bits of which songs you want. It finds them on YouTube, cuts them and joins them into one track.</p>
+    <p class="for">for the sangeet, the party, the dance practice</p>
+    <div class="cta">
+      <button class="push hot big" id="btn-demo"><span class="push-face">try the demo</span></button>
+      <a class="push ghost big" href="#install"><span class="push-face">install</span></a>
+    </div>
+  </section>
+
+  <!-- ══ the demo: the app's three steps, running on three free songs ══ -->
+  <div id="demo" class="demo" hidden>
+    <p class="demo-note"><b>Demo.</b> The songs are fixed here. To cut your own, you need the app.</p>
+    <p class="demo-credit">Demo songs: Kevin MacLeod, incompetech.com, <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a></p>
+
+    <!-- 1 -->
+    <section class="bay" id="bay-write">
+      <div class="bay-head">
+        <span class="tab">1</span>
+        <h2>write it down</h2>
+        <span class="bay-note">one clip per line</span>
+      </div>
+
+      <div class="clipboard">
+        <div class="clip" aria-hidden="true"><i></i></div>
+        <label class="sr-only" for="cue">The clips you want</label>
+        <textarea id="cue" rows="4" spellcheck="false" readonly></textarea>
+        <p class="toast" id="cue-toast" role="status" aria-live="polite" hidden>The demo songs are fixed. <a href="#install">Get the app</a> to write your own.</p>
+      </div>
+      <p class="say">A song name and a time range, or <b>full</b>. In the app you write any songs or YouTube links. <a href="#install">Get the app</a> to cut your own.</p>
+
+      <div class="bay-foot">
+        <button class="push big" id="btn-read"><span class="push-face">read the card</span></button>
+      </div>
+    </section>
+
+    <!-- 2 -->
+    <section class="bay" id="bay-rack" hidden>
+      <div class="bay-head">
+        <span class="tab">2</span>
+        <h2>check the tape</h2>
+        <span class="bay-note">drag the handles, reorder, preview</span>
+      </div>
+
+      <div class="rack" id="rack" role="list"></div>
+
+      <div class="bench">
+        <div class="lcd">
+          <div class="lcd-row"><span>CLIPS</span><b id="n-clips">0</b></div>
+          <div class="lcd-row"><span>TOTAL</span><b id="n-total">0:00</b></div>
+          <div class="lcd-scan" aria-hidden="true"></div>
+        </div>
+        <div class="fader">
+          <span class="fader-cap">crossfade</span>
+          <div class="fader-slot">
+            <input type="range" id="fader" min="0" max="4000" step="100" value="2000" aria-label="Crossfade between clips" />
+          </div>
+          <span class="fader-val mono" id="fader-val">2.0s</span>
+        </div>
+      </div>
+
+      <div class="bay-foot">
+        <button class="push ghost" id="btn-back"><span class="push-face">back</span></button>
+        <button class="push big hot" id="btn-cut"><span class="push-face">cut the tape</span></button>
+      </div>
+    </section>
+
+    <!-- 3 -->
+    <section class="bay" id="bay-deck" hidden>
+      <div class="bay-head">
+        <span class="tab">3</span>
+        <h2 id="deck-title">cutting</h2>
+      </div>
+
+      <div class="progress" id="progress">
+        <div class="rail"><div class="rail-fill" id="rail-fill"></div></div>
+        <p class="deck-msg mono" id="deck-msg" role="status" aria-live="polite">standing by</p>
+      </div>
+
+      <div id="done" hidden>
+        <div class="cassette" id="cassette">
+          <div class="cas-label">
+            <span class="cas-side">A</span>
+            <input class="cas-title" id="mix-name" value="my mashup" aria-label="Name this mix" spellcheck="false" />
+            <span class="cas-meta mono" id="mix-meta"></span>
+          </div>
+          <div class="cas-window" aria-hidden="true">
+            <span class="reel"></span><span class="reel"></span>
+          </div>
+        </div>
+
+        <div class="nowbar" id="nowbar"><span class="now-k">now playing</span><span class="now-v" id="now-title">·</span></div>
+
+        <div class="transport">
+          <button class="tbtn play" id="btn-play" aria-label="Play the mix">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path class="i-play" d="M8 5v14l11-7z" /><g class="i-pause"><rect x="7" y="5" width="3.6" height="14" rx="1.2"/><rect x="13.4" y="5" width="3.6" height="14" rx="1.2"/></g></svg>
+          </button>
+          <div class="scrub">
+            <div class="scrub-rail" id="scrub">
+              <div class="seg-marks" id="seg-marks" aria-hidden="true"></div>
+              <div class="scrub-fill" id="scrub-fill"></div>
+            </div>
+            <div class="scrub-time mono"><span id="t-now">0:00</span><span id="t-end">0:00</span></div>
+          </div>
+          <button class="tbtn save" id="btn-save" aria-label="Save the mix">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0l-4.2-4.2M12 14l4.2-4.2M4 18.5h16"/></svg>
+          </button>
+        </div>
+
+        <div class="bay-foot">
+          <button class="push ghost" id="btn-edit"><span class="push-face">not quite, let me edit</span></button>
+          <a class="push hot" href="#install"><span class="push-face">get the app</span></a>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ══ video ══ -->
+  <!-- To show a video, put a YouTube id in data-youtube, e.g. data-youtube="dQw4w9WgXcQ" -->
+  <section class="bay" id="watch" data-youtube="">
+    <div class="bay-head">
+      <span class="tab">▶</span>
+      <h2>watch it</h2>
+    </div>
+    <div class="telly">
+      <div class="screen" id="screen">
+        <button class="screen-play" id="screen-play" aria-label="Play the video" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" /></svg>
+        </button>
+        <p class="screen-soon" id="screen-soon">video soon</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ install ══ -->
+  <section class="bay" id="install">
+    <div class="bay-head">
+      <span class="tab">⤓</span>
+      <h2>install</h2>
+      <span class="bay-note">free, nothing else needed</span>
+    </div>
+
+    <div class="mode" role="tablist" aria-label="Operating system">
+      <button class="mode-tab" role="tab" data-os="mac">Mac</button>
+      <button class="mode-tab" role="tab" data-os="win">Windows</button>
+      <button class="mode-tab" role="tab" data-os="linux">Linux</button>
+    </div>
+
+    <p class="phone-note" id="phone-note" hidden>Runs on a computer. Open this page on one to install.</p>
+
+    <div class="os" data-os="mac">
+      <ol class="steps">
+        <li>Open <b>Terminal</b>: Launchpad › type Terminal › Enter.</li>
+        <li>Paste this and press Enter:
+          <div class="cmd"><code>curl -fsSL https://raw.githubusercontent.com/laksh-ya/mashup-deck/main/install.sh | sh</code><button class="copy">copy</button></div>
+        </li>
+      </ol>
+    </div>
+
+    <div class="os" data-os="win" hidden>
+      <ol class="steps">
+        <li>Open <b>PowerShell</b>: Start › type PowerShell › Enter.</li>
+        <li>Paste this and press Enter:
+          <div class="cmd"><code>irm https://raw.githubusercontent.com/laksh-ya/mashup-deck/main/install.ps1 | iex</code><button class="copy">copy</button></div>
+        </li>
+      </ol>
+    </div>
+
+    <div class="os" data-os="linux" hidden>
+      <ol class="steps">
+        <li>Open a <b>terminal</b>.</li>
+        <li>Paste this and press Enter:
+          <div class="cmd"><code>curl -fsSL https://raw.githubusercontent.com/laksh-ya/mashup-deck/main/install.sh | sh</code><button class="copy">copy</button></div>
+        </li>
+      </ol>
+    </div>
+
+    <div class="choice">
+      <div class="pick"><span class="key-cap">1</span><div><b>Try it once</b><span>nothing stays after you close it</span></div></div>
+      <div class="pick"><span class="key-cap">2</span><div><b>Install it</b><span data-os-text="mac">adds it to Launchpad and Applications</span><span data-os-text="win" hidden>adds it to the Start menu and Desktop</span><span data-os-text="linux" hidden>adds it to your apps menu and Desktop</span></div></div>
+    </div>
+
+    <p class="scribble">it opens in your browser. the terminal window is the app, keep it open while you use it.</p>
+  </section>
+
+  <!-- ══ uninstall ══ -->
+  <section class="bay" id="uninstall">
+    <div class="bay-head">
+      <span class="tab">✕</span>
+      <h2>uninstall</h2>
+    </div>
+
+    <div class="os" data-os="mac">
+      <ol class="steps">
+        <li>Close the Mashup Deck Terminal window.</li>
+        <li>In Terminal:
+          <div class="cmd"><code>sh ~/.mashup-deck/uninstall.sh</code><button class="copy">copy</button></div>
+        </li>
+      </ol>
+    </div>
+
+    <div class="os" data-os="win" hidden>
+      <ol class="steps">
+        <li>Close the Mashup Deck window.</li>
+        <li><b>Settings › Apps › Installed apps › Mashup Deck › Uninstall</b></li>
+        <li>Not listed? In PowerShell:
+          <div class="cmd"><code>powershell -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\MashupDeck\uninstall.ps1"</code><button class="copy">copy</button></div>
+        </li>
+      </ol>
+    </div>
+
+    <div class="os" data-os="linux" hidden>
+      <ol class="steps">
+        <li>Close the Mashup Deck terminal window.</li>
+        <li>In a terminal:
+          <div class="cmd"><code>sh ~/.mashup-deck/uninstall.sh</code><button class="copy">copy</button></div>
+        </li>
+      </ol>
+    </div>
+
+    <p class="scribble small">mixes you saved in Downloads stay</p>
+  </section>
+
+  <footer class="foot">
+    <button class="credits" id="btn-credits">credits</button>
+  </footer>
+</main>
+
+<!-- ══ about, over everything (same sleeve as the app) ══ -->
+<div class="scrim" id="scrim" hidden>
+  <div class="sleeve" id="sleeve" role="dialog" aria-modal="true" aria-labelledby="about-name">
+    <span class="sleeve-hole" aria-hidden="true"></span>
+    <button class="sleeve-x" id="btn-about-close" aria-label="Close">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+    </button>
+
+    <div class="sleeve-disc" aria-hidden="true"><span></span></div>
+
+    <div class="sleeve-logo">
+      <span class="mark big" aria-hidden="true"><i></i></span>
+      <div class="sleeve-lock">
+        <h2 class="sleeve-name" id="about-name">Mashup Deck</h2>
+        <p class="sleeve-tag">make mashups from song links</p>
+      </div>
+    </div>
+
+    <h3 class="sleeve-made">
+      made by
+      <a class="signature" href="https://github.com/Laksh-ya" target="_blank" rel="noopener">
+        <span class="sig-ink">Lakshya</span>
+        <svg class="sig-line" viewBox="0 0 260 22" preserveAspectRatio="none" aria-hidden="true">
+          <path d="M4 15C38 5 74 18 110 9s70-6 104 6" />
+        </svg>
+      </a>
+    </h3>
+
+    <p class="sleeve-ded">
+      for all the cousins, didis, bhaiyas and friends who kept asking me to cut a
+      mashup for a sangeet, a party or some event. this one does it in a couple of
+      minutes.
+    </p>
+
+    <p class="sleeve-ask">for any queries or improvements, hit me up at</p>
+
+    <div class="sleeve-row">
+      <a class="tag" id="link-github" href="https://github.com/laksh-ya/mashup-deck" target="_blank" rel="noopener" aria-label="GitHub">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.89 1.53 2.34 1.09 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.56-1.11-4.56-4.95 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.4 9.4 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.85-2.34 4.7-4.57 4.95.36.31.68.92.68 1.85v2.74c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/></svg>
+      </a>
+      <a class="tag" id="link-mail" href="mailto:lakshya@duck.com?subject=Mashup%20Deck" aria-label="Email">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.6" y="5" width="18.8" height="14" rx="2.4"/><path d="m3.4 6.6 8.6 6.2 8.6-6.2"/></svg>
+      </a>
+      <button class="tag" id="link-share" aria-label="Share this">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5.5" r="2.6"/><circle cx="6" cy="12" r="2.6"/><circle cx="18" cy="18.5" r="2.6"/><path d="m8.3 10.7 7.4-3.9m0 10.4-7.4-3.9"/></svg>
+      </button>
+
+      <button class="tag sfx" id="btn-mute" aria-pressed="false" aria-label="Mute the button sounds">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path class="spk" d="M4 9h3.5L12 5v14l-4.5-4H4z"/>
+          <g class="waves"><path d="M15.5 9.2a4 4 0 0 1 0 5.6"/><path d="M18 6.8a7.5 7.5 0 0 1 0 10.4"/></g>
+          <g class="cross"><path d="M15.5 9.5l5 5m0-5l-5 5"/></g>
+        </svg>
+      </button>
+    </div>
+
+    <p class="sleeve-toast" id="share-toast" hidden>link copied</p>
+  </div>
+</div>
+
+<template id="strip-tmpl">
+  <div class="strip" role="listitem">
+    <button class="grip" aria-label="Reorder this clip. Drag, or use the arrow keys."><span></span><span></span><span></span></button>
+    <div class="photo" aria-hidden="true"><span class="art"></span><span class="tape-bit tb1"></span><span class="tape-bit tb2"></span></div>
+    <div class="strip-body">
+      <h3 class="strip-title"></h3>
+      <div class="strip-times">
+        <label>in <input type="text" class="t-in mono" inputmode="numeric" /></label>
+        <label>out <input type="text" class="t-out mono" inputmode="numeric" /></label>
+        <span class="strip-len mono"></span>
+        <button class="hear" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>hear it</button>
+      </div>
+      <div class="scope">
+        <canvas class="wave" aria-hidden="true"></canvas>
+        <span class="scope-sel"></span>
+        <button class="scope-h h-in" type="button" aria-label="Start. Drag, or use the arrow keys."></button>
+        <button class="scope-h h-out" type="button" aria-label="End. Drag, or use the arrow keys."></button>
+      </div>
+    </div>
+    <button class="toss" aria-label="Remove this clip"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7h12M9 7V5h6v2m-8 0 1 12h8l1-12"/></svg></button>
+  </div>
+</template>
+
+<script type="module" src="js/site.js"></script>
+</body>
+</html>
