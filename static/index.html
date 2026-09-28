@@ -307,7 +307,16 @@
   </section>
 
   <footer class="rail-foot">
-    <button class="credits" id="btn-credits">credits</button>
+    <div class="foot-row">
+      <button class="credits" id="btn-credits">credits</button>
+      <!-- only shown when this copy was installed, not for a try-once run -->
+      <button class="credits" id="btn-uninstall" aria-expanded="false" aria-controls="uninstall-help" hidden>uninstall</button>
+    </div>
+    <div class="uninstall-help" id="uninstall-help" hidden>
+      <ol class="un-steps" id="un-steps"></ol>
+      <div class="un-cmd"><code id="un-cmd"></code><button class="un-copy" id="un-copy" type="button">copy</button></div>
+      <p class="un-note">mixes you saved in Downloads stay</p>
+    </div>
   </footer>
 
 </div>

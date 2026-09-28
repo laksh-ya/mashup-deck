@@ -50,6 +50,22 @@ def api_health():
     return {'ok': True, 'jobs': len(JOBS), **versions(), **janitor.usage()}
 
 
+@app.get('/api/install')
+def api_install():
+    """Whether this copy is installed, and where its uninstaller is.
+
+    The installers put the app in <root>/app and write the uninstaller into
+    <root> only in install mode, never for a try-once run, so the file being
+    there is the signal. Reading the real path also covers custom install
+    locations (MASHUP_HOME)."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    windows = sys.platform.startswith('win')
+    path = os.path.join(root, 'uninstall.ps1' if windows else 'uninstall.sh')
+    installed = os.path.isfile(path)
+    system = 'windows' if windows else 'mac' if sys.platform == 'darwin' else 'linux'
+    return {'installed': installed, 'os': system, 'uninstaller': path if installed else None}
+
+
 class ParseRequest(BaseModel):
     text: str
 

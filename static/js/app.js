@@ -138,6 +138,48 @@ function closeAbout() {
 infoBtn.addEventListener('click', () => (scrim.hidden ? openAbout() : closeAbout()));
 $('#btn-credits').addEventListener('click', () => (scrim.hidden ? openAbout() : closeAbout()));
 closeBtn.addEventListener('click', closeAbout);
+
+/* ── uninstall help, only for an installed copy ───────────── */
+
+const unBtn = $('#btn-uninstall');
+const unHelp = $('#uninstall-help');
+
+fetch(api('/api/install')).then((r) => r.json()).then((info) => {
+  if (!info.installed) return;
+  const win = info.os === 'windows';
+  const steps = win
+    ? ['Close the Mashup Deck window.', 'Settings › Apps › Installed apps › Mashup Deck › Uninstall.', 'Not listed? In PowerShell:']
+    : [`Close the Mashup Deck ${info.os === 'mac' ? 'Terminal' : 'terminal'} window.`, 'Then run this in a terminal:'];
+  $('#un-steps').replaceChildren(...steps.map((t) => {
+    const li = document.createElement('li');
+    li.textContent = t;
+    return li;
+  }));
+  $('#un-cmd').textContent = win
+    ? `powershell -ExecutionPolicy Bypass -File "${info.uninstaller}"`
+    : `sh "${info.uninstaller}"`;
+  unBtn.hidden = false;
+}).catch(() => {});
+
+unBtn.addEventListener('click', () => {
+  const open = unHelp.hidden;
+  unHelp.hidden = !open;
+  unBtn.setAttribute('aria-expanded', String(open));
+  play(open ? 'bloom' : 'droplet');
+  tap('light');
+});
+
+$('#un-copy').addEventListener('click', async () => {
+  const b = $('#un-copy');
+  try {
+    await navigator.clipboard.writeText($('#un-cmd').textContent);
+    b.textContent = 'copied';
+    play('success');
+    setTimeout(() => { b.textContent = 'copy'; }, 1600);
+  } catch {
+    getSelection().selectAllChildren($('#un-cmd'));
+  }
+});
 scrim.addEventListener('click', (e) => { if (e.target === scrim) closeAbout(); });
 
 document.addEventListener('keydown', (e) => {
