@@ -268,6 +268,18 @@ def _looks_blocked(err: str) -> bool:
     return any(h in low for h in _BOT_HINTS)
 
 
+# How yt-dlp words Instagram's login wall varies with the post: "login
+# required", "logged-in", or an empty media response that asks for cookies.
+_LOGIN_HINTS = ('login', 'logged-in', 'logged in', 'empty media response', '--cookies')
+INSTAGRAM_LOGIN = ('Instagram will not share this reel without a login. '
+                   'A cookies.txt with instagram.com cookies fixes that')
+
+
+def _instagram_wall(target: str, err: str) -> bool:
+    low = (err or '').lower()
+    return 'instagram.com' in (target or '').lower() and any(h in low for h in _LOGIN_HINTS)
+
+
 # A YouTube search is the slowest part of picking a preset, and the answer for
 # "Kala Chashma" does not change minute to minute. Remember it for the life of
 # the process so the second person to pick a jukebox mix skips the wait.
@@ -327,6 +339,8 @@ def resolve_clip(query_or_url: str) -> dict:
             raise
         except Exception as e:
             last_err = str(e)
+            if _instagram_wall(query_or_url, last_err):
+                raise Blocked(INSTAGRAM_LOGIN)
             if not _looks_blocked(last_err):
                 break
             time.sleep(1.5 + random.random())
@@ -349,7 +363,7 @@ def download_audio(video_id: str, url: str = None, progress_hook=None) -> str:
             return final_path
 
         if video_id.startswith(UPLOAD_TAG):
-            raise RuntimeError('this uploaded file has been cleared off the deck, add it again')
+            raise RuntimeError('This uploaded file has expired. Upload it again')
         if is_youtube_id(video_id):
             return _download(video_id, f'https://www.youtube.com/watch?v={video_id}',
                              final_path, _CLIENTS, progress_hook)
@@ -391,10 +405,9 @@ def _download(video_id: str, target: str, final_path: str, clients, progress_hoo
             time.sleep(1.6 * (attempt + 1) + random.random())
 
     joined = ' | '.join(errors)
-    if 'instagram.com' in target and 'login' in joined.lower():
+    if _instagram_wall(target, joined):
         # Instagram hides most reels from anyone not signed in
-        raise Blocked('Instagram wants a signed in session for this reel. '
-                      'A cookies.txt with instagram.com cookies fixes that')
+        raise Blocked(INSTAGRAM_LOGIN)
     if any(_looks_blocked(e) for e in errors):
         if _COOKIEFILE:
             raise Blocked('YouTube is rate limiting this download right now')

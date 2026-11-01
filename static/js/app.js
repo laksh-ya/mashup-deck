@@ -1,14 +1,23 @@
 import { play, tap, isMuted, setMuted } from '/js/sfx.js';
 import { makeSortable } from '/js/dragsort.js';
 import { mountSheet } from '/js/sheet.js';
-import { MIXES, STICKERS, mixToText, mixToClips } from '/js/presets.js';
+import { MIXES, mixToText, mixToClips } from '/js/presets.js';
 
 const $ = (s) => document.querySelector(s);
 
 /* The API is served from the same origin as the page. */
 const api = (path) => path;
 
-const RACK_NOTE = 'drag to reorder, set in and out points, preview any clip';
+const RACK_NOTE = 'Drag to reorder. Drag the handles to choose the part you want.';
+
+/* Every song gets a colour of its own, kept when it moves, shown on its trim
+   bar and again on the finished mix's timeline. */
+const HUES = 6;
+let nextHue = 0;
+const hueOf = (clip) => {
+  if (clip.hue == null) clip.hue = nextHue++ % HUES;
+  return clip.hue;
+};
 
 /* ── state ────────────────────────────────────────────────── */
 
@@ -239,23 +248,6 @@ const warn = $('#write-warn');
 
 input.placeholder = 'Kesariya 0:45 to 1:10\nyoutu.be/4_eEgJhsBMo 0:20 to 0:52\nLevitating full';
 
-const stickerBox = $('#stickers');
-STICKERS.forEach((s) => {
-  const b = document.createElement('button');
-  b.className = 'sticker';
-  b.type = 'button';
-  b.textContent = s.label;
-  b.addEventListener('click', () => {
-    input.value = s.text;
-    if (mode === 'rows') sheet.fromText(s.text);
-    warn.hidden = true;
-    focusInput();
-    play('sparkle');
-    tap('light');
-  });
-  stickerBox.appendChild(b);
-});
-
 /* ── two ways to write the same thing ─────────────────────── */
 
 const clipboard = $('.clipboard');
@@ -309,8 +301,8 @@ async function readCard(text) {
 
   if (!text) {
     warn.textContent = mode === 'rows'
-      ? 'put at least one song in a box first'
-      : 'write a line first, or grab one of the stickers';
+      ? 'Put at least one song in a row first.'
+      : 'Write a song first, or pick a ready-made mix below.';
     warn.hidden = false;
     play('error');
     tap('warning');
@@ -331,7 +323,7 @@ async function readCard(text) {
     // new songs join the list rather than replacing it
     renderRack();
     appendGhosts(parsed.clips);
-    $('#rack-note').textContent = 'looking these up';
+    $('#rack-note').textContent = 'Looking these up…';
     showBay('rack', true);
 
     const found = await post('/api/resolve', { clips: parsed.clips });
@@ -372,10 +364,10 @@ const tmpl = $('#strip-tmpl');
 /* Placeholder strips under the real ones while the lookup runs. */
 function appendGhosts(raw) {
   $('#rack-empty').hidden = true;
-  raw.forEach((c) => {
+  raw.forEach((c, i) => {
     const node = tmpl.content.cloneNode(true);
-    node.querySelector('.strip').classList.add('ghost');
-    node.querySelector('.strip-title').textContent = c.raw || c.query || 'looking this up';
+    node.querySelector('.strip').classList.add('ghost', `hue-${(nextHue + i) % HUES}`);
+    node.querySelector('.strip-title').textContent = c.raw || c.query || 'Looking this up';
     node.querySelector('.strip-times').remove();
     node.querySelector('.strip-knobs').remove();
     node.querySelector('.peek').remove();
@@ -408,9 +400,13 @@ function renderRack(refocus) {
 
     if (clip.error) {
       strip.classList.add('bad');
+      // a link was not searched for, it was refused, so say why
+      const link = /^https?:\/\//.test(clip.query || '');
       title.textContent = clip.source === 'upload'
-        ? `could not use "${clip.query}": ${clip.error}`
-        : `no luck finding "${clip.query || 'that one'}"`;
+        ? `Couldn't use "${clip.query}": ${clip.error}`
+        : link
+          ? `Couldn't open ${clip.query.replace(/^https?:\/\/(www\.)?/, '').split('?')[0]}: ${String(clip.error).replace(/^ERROR:\s*/, '').slice(0, 160)}`
+          : `Couldn't find "${clip.query || 'that one'}". Try the song's name with the singer, or paste a link.`;
       node.querySelector('.photo').remove();
       node.querySelector('.strip-times').remove();
       node.querySelector('.strip-knobs').remove();
@@ -419,12 +415,13 @@ function renderRack(refocus) {
       node.querySelector('.grip').remove();
     } else {
       if (clip.end == null) clip.end = clip.duration;
+      strip.classList.add(`hue-${hueOf(clip)}`);
       title.textContent = clip.title;
       title.title = clip.title;
 
       // say where it came from when that is not YouTube
       const tag = node.querySelector('.src-tag');
-      if (clip.source === 'upload') { tag.textContent = 'File'; tag.classList.add('file'); tag.hidden = false; }
+      if (clip.source === 'upload') { tag.textContent = 'From your computer'; tag.classList.add('file'); tag.hidden = false; }
       else if (clip.source === 'instagram') { tag.textContent = 'Instagram'; tag.classList.add('ig'); tag.hidden = false; }
       else if (!isYouTube(clip)) { tag.textContent = clip.source; tag.hidden = false; }
 
@@ -640,10 +637,27 @@ function wireKnobs(node, clip, first) {
   const gain = node.querySelector('.k-gain');
   const gainVal = node.querySelector('.k-gain-v');
   const xf = node.querySelector('.k-xf');
+  const adj = node.querySelector('.adj');
+  const knobs = node.querySelector('.strip-knobs');
+
+  // tucked away until asked for, with a dot when something differs from normal
+  const paintAdj = () => adj.classList.toggle('is-set', Boolean(clip.gain_db) || clip.crossfade_ms != null);
+  const show = (open) => {
+    knobs.hidden = !open;
+    adj.setAttribute('aria-expanded', String(open));
+  };
+  show(Boolean(clip.adjusting));
+  adj.addEventListener('click', () => {
+    clip.adjusting = knobs.hidden;
+    show(clip.adjusting);
+    play(clip.adjusting ? 'bloom' : 'droplet');
+    tap('light');
+  });
 
   const paintGain = () => {
     const v = clip.gain_db || 0;
     gainVal.textContent = v > 0 ? `+${v} dB` : `${v} dB`;
+    paintAdj();
   };
   gain.value = clip.gain_db || 0;
   paintGain();
@@ -656,8 +670,10 @@ function wireKnobs(node, clip, first) {
   xf.value = clip.crossfade_ms == null ? '' : String(clip.crossfade_ms);
   // a value saved by an older mix might not be one of the choices
   if (xf.value === '' && clip.crossfade_ms != null) clip.crossfade_ms = null;
+  paintAdj();
   xf.addEventListener('change', () => {
     clip.crossfade_ms = xf.value === '' ? null : Number(xf.value);
+    paintAdj();
     paintBench();
     play('tick');
   });
@@ -749,19 +765,21 @@ function totalSec() {
 
 function paintBench() {
   const n = goodClips().length;
-  $('#n-clips').textContent = String(n).padStart(2, '0');
+  const songs = n === 1 ? 'song' : 'songs';
+  $('#n-clips').textContent = String(n);
+  $('#n-clips-word').textContent = songs;
   $('#n-total').textContent = fmt(totalSec());
   $('#btn-cut').disabled = n === 0;
   const format = $('#opt-format')?.value.toUpperCase() || 'MP3';
   $('#export-note').textContent = n
-    ? `${n} ${n === 1 ? 'clip' : 'clips'}, ${fmt(totalSec())} as ${format}`
-    : 'Add a track to export a mix';
+    ? `${n} ${songs}, ${fmt(totalSec())} long, saved as ${format}`
+    : 'Add a song to make a mix';
 }
 
 const fader = $('#fader');
 fader.addEventListener('input', () => {
   const v = Number(fader.value);
-  $('#fader-val').textContent = v === 0 ? 'off' : `${(v / 1000).toFixed(1)}s`;
+  $('#fader-val').textContent = v === 0 ? 'Off' : `${(v / 1000).toFixed(1)} s`;
   paintBench();
 });
 fader.addEventListener('change', () => { play('tick'); tap('selection'); });
@@ -891,9 +909,9 @@ async function cutTape() {
   deck.classList.remove('halt');
   rail.classList.remove('err');
   $('#btn-cut').disabled = true;
-  $('#deck-title').textContent = 'Rendering your mix';
-  $('#deck-note').textContent = 'this takes a minute or so';
-  setRail(4, 'getting started');
+  $('#deck-title').textContent = 'Making your mix';
+  $('#deck-note').textContent = 'This takes a minute or so.';
+  setRail(4, 'Getting started');
   play('loading');
   tap('medium');
 
@@ -933,15 +951,15 @@ function pctFor(step, total) {
 }
 
 function humanStep(step) {
-  if (!step) return 'working';
+  if (!step) return 'Working…';
   const m = step.match(/\((\d+)\s*\/\s*(\d+)\)/);
   const pair = m ? ` ${m[1]} of ${m[2]}` : '';
-  if (/downloading/i.test(step)) return `pulling clip${pair}`;
-  if (/trimming/i.test(step)) return `cutting clip${pair}`;
-  if (/tempo/i.test(step)) return 'lining up the beats';
-  if (/volume/i.test(step)) return 'evening out the volume';
-  if (/merging/i.test(step)) return 'splicing it together';
-  return step.toLowerCase();
+  if (/downloading/i.test(step)) return `Getting song${pair}…`;
+  if (/trimming/i.test(step)) return `Cutting song${pair}…`;
+  if (/tempo/i.test(step)) return 'Lining up the beats…';
+  if (/volume/i.test(step)) return 'Evening out the volume…';
+  if (/merging/i.test(step)) return 'Joining it all together…';
+  return step;
 }
 
 function watchJob(total) {
@@ -967,7 +985,7 @@ function watchJob(total) {
     // keep turning forever and nothing ever says why.
     if (s.status === 'not_found') {
       clearInterval(pollTimer);
-      jam('the server restarted while cutting, press cut again');
+      jam('The app restarted while making the mix. Make it again.');
       return;
     }
     setRail(pctFor(s.step, total), humanStep(s.step));
@@ -983,11 +1001,11 @@ const scrubRail = $('#scrub-rail');
 const scrubFill = $('#scrub-fill');
 
 function finish(status) {
-  setRail(100, 'done');
+  setRail(100, 'Done');
   deck.classList.add('halt');
   paintBench();
   $('#deck-title').textContent = 'Your mix is ready';
-  $('#deck-note').textContent = 'name it, play it, send it';
+  $('#deck-note').textContent = 'Give it a name, play it, then download or send it.';
   counter.textContent = '';
 
   jobFile = { ext: status?.ext || 'mp3', mime: status?.mime || 'audio/mpeg' };
@@ -1016,19 +1034,19 @@ function finish(status) {
   if (skipped.length) {
     const names = skipped.map((s) => s.title).join(', ');
     lines.push(skipped.length === 1
-      ? `could not get ${names}, so it is not in here. everything else made it.`
-      : `could not get ${skipped.length} of these, so they are not in here: ${names}. everything else made it.`);
+      ? `Couldn't get ${names}, so it's left out. Everything else is in.`
+      : `Couldn't get ${skipped.length} of these, so they're left out: ${names}. Everything else is in.`);
   }
   const nudged = status?.tempo || [];
   if (nudged.length) {
-    lines.push(`played ${nudged.length === 1 ? '1 song' : `${nudged.length} songs`} a little `
-      + 'faster or slower to sit on the beat of the first.');
+    lines.push(`Played ${nudged.length === 1 ? '1 song' : `${nudged.length} songs`} a little `
+      + "faster or slower to match the first song's beat.");
   }
   const note = $('#skipped');
   note.textContent = lines.join(' ');
   note.hidden = !lines.length;
 
-  $('#mix-meta').textContent = `${used} ${used === 1 ? 'clip' : 'clips'} · ${fmt(mix.total || totalSec())}`;
+  $('#mix-meta').textContent = `${used} ${used === 1 ? 'song' : 'songs'} · ${fmt(mix.total || totalSec())}`;
   paintSegments();
   $('#done').hidden = false;
   play('success');
@@ -1044,7 +1062,9 @@ function paintSegments() {
 
   mix.segs.forEach((s, i) => {
     const el = document.createElement('div');
-    el.className = `seg ${i % 2 ? 'b' : 'a'}`;
+    // the same colour the song had in the track list
+    el.className = `seg hue-${s.clip ? hueOf(s.clip) : i % HUES}`;
+    el.dataset.from = s.from;
     el.style.left = `${(s.from / mix.total) * 100}%`;
     el.style.width = `${((s.to - s.from) / mix.total) * 100}%`;
     el.title = `${s.title} (${fmt(s.from)} to ${fmt(s.to)})`;
@@ -1108,14 +1128,14 @@ function jam(msg) {
   deck.classList.add('halt');
   rail.classList.add('err');
   paintBench();
-  $('#deck-title').textContent = 'Export failed';
-  $('#deck-note').textContent = 'nothing lost, change something and try again';
-  setRail(100, 'stopped');
+  $('#deck-title').textContent = "Couldn't make the mix";
+  $('#deck-note').textContent = 'Nothing is lost. Change something and try again.';
+  setRail(100, 'Stopped');
   counter.textContent = '';
   const blocked = /sign in to confirm|not a bot|429/i.test(msg);
   $('#jam-msg').textContent = blocked
     ? `YouTube blocked this download. ${msg}`
-    : msg || 'something went wrong while merging';
+    : msg || 'Something went wrong while joining the songs.';
   $('#jam').hidden = false;
   play('error');
   tap('error');
@@ -1174,6 +1194,10 @@ function paintPlayhead() {
   scrubFill.style.width = `${p * 100}%`;
   $('#t-now').textContent = fmt(audio.currentTime);
   paintNowPlaying(audio.currentTime);
+  // songs already reached show in full colour, the rest stay faint
+  $('#seg-marks').querySelectorAll('.seg').forEach((el) => {
+    el.classList.toggle('played', Number(el.dataset.from) <= audio.currentTime);
+  });
 }
 audio.addEventListener('seeked', paintPlayhead);
 audio.addEventListener('timeupdate', paintPlayhead);
@@ -1231,12 +1255,12 @@ sendBtn.addEventListener('click', async () => {
     a.download = `${stem}.${jobFile.ext}`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(tmp), 4000);
-    said('saved, now attach it anywhere');
+    said('Saved. Now attach it anywhere.');
     play('success');
     tap('success');
   } catch (err) {
     if (err?.name === 'AbortError') return;   // they closed the share sheet
-    said('could not send it, try save instead');
+    said("Couldn't send it. Try Download instead.");
     play('error');
     tap('error');
   } finally {
@@ -1248,7 +1272,7 @@ sendBtn.addEventListener('click', async () => {
 $('#btn-edit').addEventListener('click', () => {
   audio.pause();
   clearNowPlaying();
-  $('#rack-note').textContent = 'change what you like, then export again';
+  $('#rack-note').textContent = 'Change anything you like, then make the mix again.';
   showBay('rack');
 });
 
@@ -1270,7 +1294,7 @@ $('#btn-fresh').addEventListener('click', () => {
   sheet.fromText('');
   markPicked(null);
   fader.value = 0;
-  $('#fader-val').textContent = 'off';
+  $('#fader-val').textContent = 'Off';
   paintRange(fader);
   $('#done').hidden = true;
   $('#jam').hidden = true;
@@ -1279,6 +1303,7 @@ $('#btn-fresh').addEventListener('click', () => {
   nameField.value = 'my mashup';
   jobFile = { ext: 'mp3', mime: 'audio/mpeg' };
   cutList = [];
+  nextHue = 0;
   $('#rack-note').textContent = RACK_NOTE;
   renderRack();
   showBay('write');
@@ -1298,6 +1323,7 @@ MIXES.forEach((mix) => {
   b.innerHTML = '<b></b><span></span><i class="jcard-n"></i>';
   b.querySelector('b').textContent = mix.name;
   b.querySelector('span').textContent = mix.blurb;
+  b.title = mix.blurb;
   // each one says how many songs are on it
   b.querySelector('.jcard-n').textContent = `${mix.clips.length} songs`;
   b.addEventListener('click', () => loadMix(mix));
@@ -1352,13 +1378,14 @@ function loadMix(mix) {
   input.value = mixToText(mix);
   if (mode === 'rows') sheet.fromText(input.value);
   nameField.value = mix.name.toLowerCase();
+  nextHue = 0;
   clips = mixToClips(mix);
 
   play('sparkle');
   tap('medium');
 
   showBay('rack');
-  $('#rack-note').textContent = 'ready to go, or change the trims first';
+  $('#rack-note').textContent = 'Ready to go. Change any part first if you like.';
   renderRack();
   markPicked(mix.id);
 }
@@ -1453,8 +1480,8 @@ async function addFiles(files) {
   play('loading');
   for (const [n, file] of files.entries()) {
     note.textContent = files.length > 1
-      ? `bringing in your files (${n + 1} of ${files.length})`
-      : `bringing in ${file.name}`;
+      ? `Adding your files (${n + 1} of ${files.length})…`
+      : `Adding ${file.name}…`;
     try {
       const r = await fetch(api(`/api/upload?name=${encodeURIComponent(file.name)}`), {
         method: 'POST',
@@ -1542,15 +1569,15 @@ $('#btn-keep').addEventListener('click', () => {
     saved: Date.now(),
     crossfade_ms: Number(fader.value),
     options: mixOptions(),
-    clips: good.map(({ video_id, url, source, title, thumbnail, duration, start, end, gain_db, crossfade_ms }) => (
-      { video_id, url, source, title, thumbnail, duration, start, end, gain_db, crossfade_ms })),
+    clips: good.map(({ video_id, url, source, title, thumbnail, duration, start, end, gain_db, crossfade_ms, hue }) => (
+      { video_id, url, source, title, thumbnail, duration, start, end, gain_db, crossfade_ms, hue })),
   };
   // the same name again is an update, not a second copy
   const ok = writeSaved([entry, ...readSaved().filter((m) => m.name !== name)].slice(0, 30));
   const uploads = good.some((c) => c.source === 'upload');
   keptNote.textContent = !ok
-    ? 'this browser would not let it be saved'
-    : `saved as "${name}" on this device.${uploads ? ' files from this computer only stay on the deck for a while, so add those again later.' : ''}`;
+    ? "This browser wouldn't let it be saved."
+    : `Saved as "${name}" on this device.${uploads ? ' Files from your computer are only kept for a while, so you may need to add those again later.' : ''}`;
   keptNote.hidden = false;
   paintSaved();
   play(ok ? 'success' : 'error');
@@ -1559,6 +1586,7 @@ $('#btn-keep').addEventListener('click', () => {
 
 function loadSaved(m) {
   clips = m.clips.map((c) => ({ ...c }));
+  nextHue = Math.max(-1, ...clips.map((c) => c.hue ?? -1)) + 1;
   fader.value = m.crossfade_ms || 0;
   fader.dispatchEvent(new Event('input'));
   setMixOptions(m.options);
@@ -1574,7 +1602,7 @@ function loadSaved(m) {
   play('sparkle');
   tap('medium');
   showBay('rack');
-  $('#rack-note').textContent = 'your mix, the way you left it';
+  $('#rack-note').textContent = 'Your mix, the way you left it.';
   renderRack();
 }
 

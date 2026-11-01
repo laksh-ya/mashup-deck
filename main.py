@@ -32,7 +32,7 @@ import janitor
 import paths
 from parser import parse_text
 from youtube import resolve_clip, download_audio, source_path, UPLOAD_TAG
-from audio import trim, merge_clips, even_out, match_tempo, import_upload, FORMATS
+from audio import trim, merge_clips, even_out, match_tempo, import_upload, audio_seconds, FORMATS
 
 @asynccontextmanager
 async def lifespan(_app):
@@ -116,6 +116,13 @@ def api_resolve(req: ResolveRequest):
             continue
         try:
             info = resolve_clip(target)
+            if info.get('duration') is None and info.get('source') != 'youtube':
+                # Instagram rarely says how long a reel is. Reels are short, so
+                # fetch it now and measure; the cut reuses the same file.
+                try:
+                    info['duration'] = audio_seconds(download_audio(info['video_id'], info['url']))
+                except Exception:
+                    traceback.print_exc()
             end = c.end if c.end is not None else info['duration']
             resolved.append({**info, 'start': c.start, 'end': end})
         except Exception as e:

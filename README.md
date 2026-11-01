@@ -85,13 +85,15 @@ can be edited before exporting.
 
 - **Sound** on every interaction, chosen semantically, with a mute that persists
 - **Haptics** on phones, using patterns that match what happened
-- **One screen**: songs come in on the left, are trimmed and ordered on the
-  right, and leave as one file. On a phone the same panels stack in that order
+- **Three steps, one column**: add songs, choose the part of each, make the mix.
+  Advanced settings wait under *More options* and *Adjust*
+- **A colour per song**, on its trim bar and again on the finished mix's timeline
+- **Light and dark**, following the system setting
 - **Responsive from 320px up**, verified in a browser
 - **Contrast at WCAG AA** for every text colour on every surface it sits on
 - **Keyboard reachable**: reorder, trim, submit, play, close
 - **Respects reduced motion**
-- **Self-hosted fonts**, so type never waits on a CDN
+- **The system font**, so type never waits on a download
 
 ---
 
@@ -168,7 +170,7 @@ can be edited before exporting.
 | **Audio** | ffmpeg, pydub |
 | **Sourcing** | yt-dlp |
 | **Frontend** | plain ES modules, no framework, no build step |
-| **Type** | Geist and Geist Mono, self hosted |
+| **Type** | the system font |
 | **Sound** | [cuelume](https://cuelume-site.pages.dev) |
 | **Haptics** | [web-haptics](https://haptics.lochie.me) |
 | **Install** | one command, `uv` for Python, static ffmpeg |

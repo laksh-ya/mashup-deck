@@ -46,6 +46,11 @@ def trim(path: str, start: float, end):
     return audio[start_ms:end_ms]
 
 
+def audio_seconds(path: str) -> float:
+    """How long a file plays, read from its header by ffprobe."""
+    return round(float(mediainfo(path).get('duration') or 0), 2)
+
+
 def import_upload(src: str, dest: str) -> float:
     """Turn whatever someone uploaded into the same mp3 a download would be.
 

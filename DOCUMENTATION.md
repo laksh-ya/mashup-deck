@@ -157,8 +157,8 @@ the real safety net.
 
 No bundler, no `node_modules`, no framework. `index.html`, one stylesheet, five ES
 modules served as-is. The two third party libraries are vendored as ESM into
-`static/vendor/` and the fonts are self hosted, so no code or type is fetched from
-anyone else at runtime. The one external request left is each clip's thumbnail,
+`static/vendor/` and the type is the system font, so no code or type is fetched
+from anyone else at runtime. The one external request left is each clip's thumbnail,
 which comes from YouTube's own CDN (`i.ytimg.com`) because there is nowhere else to
 get it.
 
@@ -273,23 +273,45 @@ it.
 
 ## Design
 
-A small audio studio, in the line of the editors people already know.
+Clean and plain on purpose: the people this is for want a mix for tonight's
+sangeet, not a studio to learn. The design follows Apple's Human Interface
+Guidelines as principles (it is a web page, not an Apple app) and Emil
+Kowalski's design engineering rules for motion and feel.
 
-**One screen.** Songs come in on the left (text, rows, uploads, ready-made and
-saved mixes), get trimmed and ordered on the right, and leave from the mix panel
-under them. Nothing hides another step, so adding one more song never means
-leaving the track list. On a phone the same panels stack in working order: add,
-tracks, mix, result, then the suggestions.
+**Three steps, one column.** Add songs, choose the part of each, make the mix.
+Each step is a card in reading order, numbered because it is a real sequence,
+and the result appears under them. Nothing hides another step, so adding one
+more song never means leaving the track list.
 
-**Type.** Geist for the interface and Geist Mono for every number, so times and
-lengths line up in columns. Two families, self hosted.
+**The common path first.** Crossfade and *Make the mix* are all the mix card
+shows. Fades, volume levelling, tempo matching, file type and quality sit under
+*More options*. Each song's volume and blend sit under its *Adjust* button, which
+shows a dot when something has been changed.
 
-**Colour.** Near black surfaces separated by hairlines, one orange accent for
-whatever is selected or about to happen, and status colours only for status.
+**A colour per song.** Each song keeps its own colour from the moment it lands:
+on its trim bar and handles, on its placeholder artwork, and again on its
+stretch of the finished mix's timeline, where the songs already played fill in.
+It is the one distinctive thing on screen, and it carries information: which
+piece of the mix is which song.
 
-**Restraint.** The canvas room, the VU needles and the tape deck were removed with
-the old materials: decoration that cost a canvas, a Web Audio graph and most of
-the stylesheet.
+**Type.** The system font (SF Pro on Apple devices, Segoe UI on Windows) with
+tabular figures, so times line up and do not jitter as they change. Headings use
+tighter tracking, body text sits at 16px or more, and inputs at 16px so a phone
+does not zoom.
+
+**Light and dark** follow the system setting, with no switch of its own. Every
+text colour meets 4.5:1 on every surface it sits on in both, and
+`prefers-contrast: more` strengthens the lines.
+
+**Touch and feel.** Controls are at least 44px tall on a phone. Everything that
+can be pressed scales to 0.97 on press. Transitions name their properties, stay
+under 300ms, and use strong ease-out curves; hover effects only apply where
+there is a pointer that hovers; reduced motion turns movement off. New songs
+ease into the list with `@starting-style` instead of popping in.
+
+**Words.** Sentence case everywhere, buttons say what happens (*Find songs*,
+*Make the mix*, *Download*), and errors say what went wrong and what to do
+next.
 
 ---
 
