@@ -33,6 +33,10 @@ MAX_DOWNLOAD_MB = _num('MAX_DOWNLOAD_MB', 400)
 MAX_OUTPUT_MB = _num('MAX_OUTPUT_MB', 150)
 SWEEP_EVERY = _num('SWEEP_EVERY_MIN', 5) * 60
 
+# A failed job has no file, so it would be forgotten by the very sweep that runs
+# as it fails, before the page polls again to read what went wrong.
+ERROR_KEEP = 10 * 60
+
 _lock = threading.Lock()
 
 
@@ -88,21 +92,25 @@ def _clean(folder: str, ttl: float, max_bytes: float, keep: set) -> int:
 
 
 def sweep(jobs: dict | None = None) -> int:
-    """Tidy both folders. Files belonging to a job still in progress are kept."""
+    """Tidy both folders. Sources a job in progress is cutting from are kept."""
     with _lock:
         keep = set()
         if jobs:
             for job in list(jobs.values()):
-                if job.get('status') in ('queued', 'running') and job.get('output'):
-                    keep.add(job['output'])
+                if job.get('status') in ('queued', 'running'):
+                    for vid in job.get('sources') or []:
+                        keep.add(os.path.join(DOWNLOAD_DIR, f'{vid}.mp3'))
 
         freed = _clean(DOWNLOAD_DIR, DOWNLOAD_TTL, MAX_DOWNLOAD_MB * 1024 * 1024, keep)
         freed += _clean(OUTPUT_DIR, OUTPUT_TTL, MAX_OUTPUT_MB * 1024 * 1024, keep)
 
         # forget jobs whose file is no longer on disk, so JOBS cannot grow forever
         if jobs is not None:
+            now = time.time()
             for job_id, job in list(jobs.items()):
                 if job.get('status') in ('queued', 'running'):
+                    continue
+                if job.get('status') == 'error' and now - job.get('ended', 0) < ERROR_KEEP:
                     continue
                 out = job.get('output')
                 if not out or not os.path.exists(out):

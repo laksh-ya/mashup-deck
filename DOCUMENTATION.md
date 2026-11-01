@@ -52,6 +52,8 @@ write is small enough to enumerate:
 | `youtu.be/abc123 from 12 to 28` | that video, 12s → 28s |
 | `Levitating full` | search, whole track |
 | `Ilahi 0:40 till 1:10` | search, 40s → 70s |
+| `youtu.be/abc123?t=1m30s` | that video, from 90s to the end |
+| `instagram.com/reel/C8xYz12AbCd` | that reel, whole |
 
 Splits on newlines and on the word `then`. Times accept `mm:ss`, `h:mm:ss`, bare
 seconds and a trailing `s`. Ranges accept `to`, `-`, `till`, `until` and en dash.
@@ -63,6 +65,10 @@ input silently became a search query for the literal URL text. The parser
 normalises it to a full URL before yt-dlp sees it, because yt-dlp treats a
 schemeless string as a search term.
 
+A link copied with a start moment (`?t=90`, `&t=1m30s`, `#t=45`, `start=`) starts
+the clip there, unless a range is written out, which wins. Instagram reels, posts
+and tv links are matched the same way as YouTube ones.
+
 Stopwords (`this`, `then`, `video`, `song`, `track`, `clip`, `from`, `to`, `use`,
 `take`, `the`, `a`, `an`) are stripped from what is left, and the remainder
 becomes the search query.
@@ -70,7 +76,16 @@ becomes the search query.
 ### 2. Resolve — `youtube.py`
 
 One yt-dlp metadata lookup per clip: id, title, length, artwork. No audio yet, so
-the rack can be shown quickly.
+the track list can be shown quickly.
+
+A YouTube id is used bare, as it always was. Anything else gets a short tag and a
+dot, which a YouTube id can never contain: `ig.C8xYz12AbCd` for a reel, `up.…` for
+an uploaded file. The id becomes a file name, so it is checked against
+`^(?:[a-z]{2,10}\.)?[\w-]{1,64}$` before it gets near a path, and a bare id
+always downloads from YouTube's own watch URL whatever `url` a client sends.
+Reels download from the link they came from, with one attempt rather than the
+YouTube client rotation, and a login wall is reported as needing instagram.com
+cookies.
 
 Results are cached in process. Not to make a second visit faster, but because
 hammering YouTube search is what gets an IP rate limited. The cache protects the
@@ -78,11 +93,36 @@ deployment more than the user.
 
 ### 3. Cut — `audio.py`
 
-Download each clip's audio, trim to the range, append with a crossfade.
+Download every distinct source, three at a time. Then trim each clip, optionally
+match tempo and even out the volume, apply each clip's own gain, and join them,
+each join with its own crossfade.
 
 ```python
-final = final.append(seg, crossfade=min(crossfade_ms, len(final), len(seg)))
+final = final.append(seg, crossfade=min(crossfade_ms_i, len(final), len(seg)))
 ```
+
+The order matters: each clip's gain goes on last, so it is a change from the
+evened out level rather than something evening out would undo.
+
+**Even out volume** brings each clip to the median average loudness (RMS dBFS) of
+the mix. A quiet clip is lifted only as far as its loudest peak allows, with 1 dB
+of headroom, because pydub has no limiter.
+
+**Match tempo** estimates each clip's BPM from the autocorrelation of its loudness
+onsets (10 ms steps over the first minute, 70 to 180 BPM, parabolic refinement),
+folds half and double time together, and plays a clip faster or slower with
+ffmpeg's pitch preserving `atempo` to sit on the first clip's beat. A clip more
+than 10 percent away is left alone, because past that a voice stops sounding like
+itself. Verified on generated click tracks: 120, 126 and 80 BPM came back as
+120.0, 125.6 and 80.0.
+
+Downloads run in parallel, so the start slots are handed out under a lock (still
+1.2 seconds apart), and each source has its own lock so the same song twice, in
+one mix or two, is fetched once.
+
+The result carries where each clip actually landed in the file. Tempo changes
+and skipped clips make that impossible to predict from the trims alone, so the
+player uses the server's timeline rather than its own estimate.
 
 Runs on a background thread with a job id, so the request returns immediately and
 the browser polls for progress. Progress messages carry `(2/4)` so the frontend
@@ -94,7 +134,7 @@ can say which ones and why.
 
 ### 4. Serve — `main.py`
 
-The finished mp3, named from whatever the cassette was labelled.
+The finished mix, as mp3, m4a or wav, named from whatever the mix was titled.
 
 The name has to be applied **server side**, in `Content-Disposition`. Every
 browser prioritises that header over the anchor's `download` attribute, so the
@@ -115,7 +155,7 @@ the real safety net.
 
 ### No build step
 
-No bundler, no `node_modules`, no framework. `index.html`, one stylesheet, six ES
+No bundler, no `node_modules`, no framework. `index.html`, one stylesheet, five ES
 modules served as-is. The two third party libraries are vendored as ESM into
 `static/vendor/` and the fonts are self hosted, so no code or type is fetched from
 anyone else at runtime. The one external request left is each clip's thumbnail,
@@ -156,7 +196,7 @@ that way through a real export.
 ### Presets carry their video ids
 
 `presets.js` has the resolved id, title and length for all 23 songs, looked up
-once, offline. Picking a jukebox mix therefore costs **no** YouTube search for
+once, offline. Picking a ready-made mix therefore costs **no** YouTube search for
 anybody, including a first time visitor. This replaced an earlier per-device
 cache, which only helped someone who had already waited once, and was the wrong
 shape of solution.
@@ -172,26 +212,26 @@ disk situation worse. Removed.
 
 ## The frontend
 
-Six modules, no framework.
+Five modules, no framework.
 
 | module | responsibility |
 | --- | --- |
-| `app.js` | orchestration: the three bays, the deck, the jukebox, the about card |
-| `sheet.js` | the boxes editor, and converting between rows and cue text |
-| `stage.js` | the canvas room: records, lights, audio reactive spectrum |
+| `app.js` | orchestration: adding songs, the track list, the mix, the player, saved mixes, the about card |
+| `sheet.js` | the rows editor, and converting between rows and text |
 | `dragsort.js` | pointer and keyboard reordering with neighbours sliding aside |
-| `sfx.js` | sound and haptics behind one mute, plus the touch fidget bridge |
-| `presets.js` | the jukebox mixes |
+| `sfx.js` | sound and haptics behind one mute |
+| `presets.js` | the ready-made mixes |
 
 ### The timeline
 
-The deck names the song you are hearing, which means knowing where each clip lands
-in the finished file. pydub's crossfade makes that non-obvious: every clip after
+The player names the song you are hearing, which means knowing where each clip
+lands in the finished file. Once a mix is rendered the server says where; before
+that, the running total under the track list is an estimate. pydub's crossfade makes that non-obvious: every clip after
 the first starts *early* by the overlap, and the total is shorter than the sum of
 the parts. `buildTimeline()` mirrors that maths:
 
 ```
-fade_i  = i == 0 ? 0 : min(crossfade, total_so_far, duration_i)
+fade_i  = i == 0 ? 0 : min(crossfade_i ?? crossfade, total_so_far, duration_i)
 start_i = total_so_far - fade_i
 total   = total_so_far + duration_i - fade_i
 ```
@@ -200,8 +240,8 @@ Checked against reality, not just unit tested: three 22 second clips with a 3
 second crossfade predicted 60.0s, and the rendered mp3 measured 60.0s.
 
 That timeline drives three things at once: the now-playing name, the segment
-bands drawn on the scrub bar with crossfade zones hatched, and the green outline
-on whichever strip in the rack is currently sounding.
+bands drawn on the scrub bar with crossfade zones hatched, and the outline on
+whichever clip in the track list is currently sounding.
 
 ### Titles
 
@@ -211,49 +251,45 @@ channel tag, and removes decorative brackets, but only when the bracket contains
 words like *official*, *video*, *4K*. So `(Official HD Video)` goes and
 `(The Piña Colada Song)` and `(1988)` stay, because they are part of the name.
 
-The rack keeps the full title so you can confirm you got the right upload; only
-the deck shows the short one.
+The track list keeps the full title so you can confirm you got the right upload;
+only the player shows the short one.
 
-### The room
+### Uploads and saved mixes
 
-`stage.js` draws a canvas behind everything: two vinyl records with grooves and a
-sweeping sheen, three drifting warm lights, and a spectrum along the floor. When
-a mix plays, the spectrum is real, read from a Web Audio `AnalyserNode` on the
-audio element, and the VU needles follow its level.
+A file from this computer goes up as the raw request body (no multipart, so no
+extra dependency), and ffmpeg turns it into the same 192k mp3 a download would be,
+under an `up.` id. From then on it is a clip like any other. It previews through
+`/api/source/{id}/audio` with a `#t=start,end` fragment, since there is no
+YouTube player to embed, and reels preview the same way.
 
-A video would have been the obvious choice for a rich background and was rejected:
-it cannot react to audio, and it would be the largest thing in the deploy.
+Uploads live in `downloads/` and age out with everything else, counted from when
+they were last used. A saved mix that still names one says so when it is cut.
 
-Portrait gets its own tuning. Sized by the larger viewport dimension, the records
-were 287px discs parked mostly off screen on a phone; they are now width based and
-positioned to peek in from the top edge and the left margin, the spectrum drops
-from 64 hairlines to 26 readable bars, and the vignette lightens because on a
-phone it was erasing the only visible parts of the room.
+Saved mixes are localStorage only: the clips with their trims, gain and blend,
+plus the mix settings, under the mix's name. Saving the same name again updates
+it.
 
 ---
 
 ## Design
 
-A wooden console in a dark room, where everything is a physical object.
+A small audio studio, in the line of the editors people already know.
 
-**Type.** Shrikhand for display (chunky, warm, reverse contrast), Caveat for
-anything handwritten, Baloo 2 for interface text, Space Mono for numbers and LCDs.
-An earlier generic sans was removed entirely; there are exactly four families on
-screen and nothing else.
+**One screen.** Songs come in on the left (text, rows, uploads, ready-made and
+saved mixes), get trimmed and ordered on the right, and leave from the mix panel
+under them. Nothing hides another step, so adding one more song never means
+leaving the track list. On a phone the same panels stack in working order: add,
+tracks, mix, result, then the suggestions.
 
-**Materials.** Walnut with layered grain, brushed steel from repeating gradients,
-brass nameplates, screws that rotate when you touch a panel, LCD panels with
-scanlines, ruled paper, punch holes, a cassette that ejects.
+**Type.** Geist for the interface and Geist Mono for every number, so times and
+lengths line up in columns. Two families, self hosted.
 
-**Restraint.** The tape deck stays. The cloth hero, the constant ripple following
-the cursor, the three step plates and the `songs + timestamps = one mp3` line were
-all built and then deleted because they were decoration pretending to be
-communication.
+**Colour.** Near black surfaces separated by hairlines, one orange accent for
+whatever is selected or about to happen, and status colours only for status.
 
-**Touch parity.** Phones have no hover, so every hover flourish would simply never
-happen. `sfx.js` adds a `poked` class on press and the stylesheet mirrors each
-hover rule onto it. The signature stroke under *Lakshya* draws itself when the
-card opens rather than waiting for a hover that will never come.
+**Restraint.** The canvas room, the VU needles and the tape deck were removed with
+the old materials: decoration that cost a canvas, a Web Audio graph and most of
+the stylesheet.
 
 ---
 
@@ -285,6 +321,11 @@ playback; scrubbing a paused tape needed `seeked`.
 **A stale `flex-wrap: wrap` from an earlier round** pushed the info button below
 the nameplate at 320px. And `white-space: nowrap` does not stop *flex items* from
 wrapping, which is what the two words of the wordmark are.
+
+**A failed export reported a restart.** The sweep that runs as an export ends
+forgot every finished job with no file on disk, and a failed one never has a file,
+so it vanished before the page's next poll and the page said the server had
+restarted instead of why it failed. Failed jobs are now kept for ten minutes.
 
 **Race on job completion.** `status` flipped to `done` before `used` and `skipped`
 were written, so a poll landing in that instant saw a finished job with missing
@@ -360,6 +401,7 @@ Downloaded audio and finished mixes are both throwaway, and without management
 | `OUTPUT_TTL_MIN` | `90` | how long a finished mix is kept |
 | `MAX_DOWNLOAD_MB` | `400` | hard cap, oldest deleted first |
 | `MAX_OUTPUT_MB` | `150` | hard cap, oldest deleted first |
+| `MAX_UPLOAD_MB` | `300` | largest file accepted from this computer |
 | `SWEEP_EVERY_MIN` | `5` | background sweep interval |
 | `PORT` | `7860` container, `8765` local | set by the host, or preferred by `main.py` |
 | `DATA_DIR` | app dir | where scratch lives |
@@ -369,7 +411,8 @@ Downloaded audio and finished mixes are both throwaway, and without management
 | `YTDLP_COOKIES` | unset | the same thing as raw text |
 
 Three independent rules: a TTL, a size cap, and immediate release when someone
-starts a new mix. Files belonging to a running job are never touched. `JOBS` is
+starts a new mix. Sources a running job is cutting from are never touched, and
+reusing a file counts as use. `JOBS` is
 pruned in the same sweep, so it cannot grow forever either.
 
 ### Writable paths
@@ -393,6 +436,10 @@ the IP address rather than the request. A deploy without cookies does not work,
 so the boot log says so rather than leaving it to be found one failed export
 later. This is the reason the app ships as a one command local install instead of
 a hosted link.
+
+Instagram is the same story from the other side: most reels need a signed in
+session wherever they are fetched from, so a cookie file that has instagram.com
+rows (it may hold both sites) is accepted too.
 
 Cookies are the escape hatch. The cookie section of `youtube.py` is long because
 supplying them on a free host is awkward: no shell, no

@@ -1,5 +1,4 @@
-import { mountStage } from '/js/stage.js';
-import { play, tap, isMuted, setMuted, wireSquish, wireTouchFidget } from '/js/sfx.js';
+import { play, tap, isMuted, setMuted } from '/js/sfx.js';
 import { makeSortable } from '/js/dragsort.js';
 import { mountSheet } from '/js/sheet.js';
 import { MIXES, STICKERS, mixToText, mixToClips } from '/js/presets.js';
@@ -9,33 +8,45 @@ const $ = (s) => document.querySelector(s);
 /* The API is served from the same origin as the page. */
 const api = (path) => path;
 
-const stage = mountStage($('#stage'));
-wireSquish();
-wireTouchFidget();
-
-// small hook so the room's behaviour can be exercised from a test
-window.__stageBusy = (v) => stage.setBusy(v);
+const RACK_NOTE = 'drag to reorder, set in and out points, preview any clip';
 
 /* ── state ────────────────────────────────────────────────── */
 
 let clips = [];
 let jobId = null;
 let pollTimer = null;
-let deckTimer = null;
+// what the finished tape was saved as, so the save and send buttons agree
+let jobFile = { ext: 'mp3', mime: 'audio/mpeg' };
+
+// anything without a source came from YouTube: presets, and mixes kept before reels
+const isYouTube = (clip) => !clip.source || clip.source === 'youtube';
 
 /* ── bays ─────────────────────────────────────────────────── */
 
 const BAYS = { write: $('#bay-write'), rack: $('#bay-rack'), deck: $('#bay-deck') };
 
+/* Everything is on one screen now, so "showing" a section means bringing it
+   into view when it is not, which on a phone is most of the time. The result
+   panel only exists once something has been exported. */
 function showBay(name, quiet) {
-  Object.entries(BAYS).forEach(([k, el]) => el.classList.toggle('off', k !== name));
-  // The jukebox only belongs on the first screen. Once there is a real tape in
-  // play its big PLAY dome reads as the transport, which it is not.
-  $('#juke').classList.toggle('stow', name !== 'write');
-  if (!quiet) play('page');
   const el = BAYS[name];
-  const y = el.getBoundingClientRect().top + window.scrollY - 20;
-  window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+  if (name === 'deck') el.hidden = false;
+  if (!quiet) play('page');
+  const top = el.getBoundingClientRect().top;
+  if (top < 64 || top > innerHeight * 0.55) {
+    window.scrollTo({ top: Math.max(0, top + window.scrollY - 76), behavior: 'smooth' });
+    el.classList.remove('flash');
+    void el.offsetWidth;   // restart the highlight
+    el.classList.add('flash');
+  }
+}
+
+/* The webkit range track has no progress part, so the filled share is painted
+   from a custom property. */
+function paintRange(el) {
+  const min = Number(el.min || 0);
+  const max = Number(el.max || 100);
+  el.style.setProperty('--fill', `${((Number(el.value) - min) / (max - min)) * 100}%`);
 }
 
 /* ── time ─────────────────────────────────────────────────── */
@@ -100,10 +111,6 @@ const scrim = $('#scrim');
 const sleeve = $('#sleeve');
 const infoBtn = $('#btn-info');
 const closeBtn = $('#btn-about-close');
-
-// wrap each letter so they can bounce individually on hover
-const sigInk = $('.sig-ink');
-sigInk.innerHTML = [...sigInk.textContent].map((ch) => `<span>${ch}</span>`).join('');
 
 let lastFocus = null;
 
@@ -230,16 +237,7 @@ $('#link-share').addEventListener('click', async () => {
 const input = $('#cue-input');
 const warn = $('#write-warn');
 
-/* The example inside the paper has to fit the paper. A full line with a link
-   wraps into a mess on a narrow phone, so the short version goes there. */
-function setExample() {
-  const narrow = window.innerWidth < 620;
-  input.placeholder = narrow
-    ? 'Kesariya from 0:45 to 1:10\nthen youtu.be/4_eEgJhsBMo\nfrom 0:20 to 0:52\nthen Levitating full'
-    : 'Kesariya from 0:45 to 1:10\nthen youtu.be/4_eEgJhsBMo from 0:20 to 0:52\nthen Levitating full';
-}
-setExample();
-addEventListener('resize', setExample);
+input.placeholder = 'Kesariya 0:45 to 1:10\nyoutu.be/4_eEgJhsBMo 0:20 to 0:52\nLevitating full';
 
 const stickerBox = $('#stickers');
 STICKERS.forEach((s) => {
@@ -323,34 +321,46 @@ async function readCard(text) {
   const btn = $('#btn-read');
   const face = btn.querySelector('.push-face');
   btn.disabled = true;
-  face.textContent = 'reading';
+  face.textContent = 'Finding…';
   play('loading');
 
   try {
     const parsed = await post('/api/parse', { text });
     if (!parsed.clips?.length) throw new Error('could not find any clips in that');
 
-    showBay('rack');
+    // new songs join the list rather than replacing it
+    renderRack();
+    appendGhosts(parsed.clips);
     $('#rack-note').textContent = 'looking these up';
-    renderGhosts(parsed.clips);
+    showBay('rack', true);
 
     const found = await post('/api/resolve', { clips: parsed.clips });
-    clips = found.clips;
-    $('#rack-note').textContent = 'drag to reorder, tap a time to change it';
+    clips.push(...found.clips);
+    markPicked(null);
+    $('#rack-note').textContent = RACK_NOTE;
     renderRack();
 
-    const ok = clips.filter((c) => !c.error).length;
-    if (ok) { play('ready'); tap('success'); }
-    else { play('error'); tap('error'); }
+    const ok = found.clips.filter((c) => !c.error).length;
+    if (ok) {
+      // the box did its job, so it is clear for the next ones
+      input.value = '';
+      sheet.fromText('');
+      play('ready');
+      tap('success');
+    } else {
+      play('error');
+      tap('error');
+    }
   } catch (e) {
-    showBay('write');
+    renderRack();
+    $('#rack-note').textContent = RACK_NOTE;
     warn.textContent = e.message;
     warn.hidden = false;
     play('error');
     tap('error');
   } finally {
     btn.disabled = false;
-    face.textContent = 'read the card';
+    face.textContent = 'Find songs';
   }
 }
 
@@ -359,15 +369,15 @@ async function readCard(text) {
 const rack = $('#rack');
 const tmpl = $('#strip-tmpl');
 
-/* Placeholder strips while the YouTube lookup runs. The photo slot shows a
-   turning reel behind film sprockets rather than a broken image icon. */
-function renderGhosts(raw) {
-  rack.innerHTML = '';
+/* Placeholder strips under the real ones while the lookup runs. */
+function appendGhosts(raw) {
+  $('#rack-empty').hidden = true;
   raw.forEach((c) => {
     const node = tmpl.content.cloneNode(true);
     node.querySelector('.strip').classList.add('ghost');
     node.querySelector('.strip-title').textContent = c.raw || c.query || 'looking this up';
     node.querySelector('.strip-times').remove();
+    node.querySelector('.strip-knobs').remove();
     node.querySelector('.peek').remove();
     node.querySelector('.grip').style.visibility = 'hidden';
     node.querySelector('.toss').style.visibility = 'hidden';
@@ -381,12 +391,15 @@ function renderGhosts(raw) {
 
     rack.appendChild(node);
   });
-  $('#btn-add').hidden = true;
   paintBench();
 }
 
 function renderRack(refocus) {
   rack.innerHTML = '';
+  // a "saved" note stops being true the moment anything changes
+  $('#kept-note').hidden = true;
+  // the first clip has nothing before it to blend from
+  const firstGood = clips.findIndex((c) => !c.error);
 
   clips.forEach((clip, i) => {
     const node = tmpl.content.cloneNode(true);
@@ -395,9 +408,12 @@ function renderRack(refocus) {
 
     if (clip.error) {
       strip.classList.add('bad');
-      title.textContent = `no luck finding "${clip.query || 'that one'}"`;
+      title.textContent = clip.source === 'upload'
+        ? `could not use "${clip.query}": ${clip.error}`
+        : `no luck finding "${clip.query || 'that one'}"`;
       node.querySelector('.photo').remove();
       node.querySelector('.strip-times').remove();
+      node.querySelector('.strip-knobs').remove();
       node.querySelector('.scope').remove();
       node.querySelector('.peek').remove();
       node.querySelector('.grip').remove();
@@ -405,6 +421,12 @@ function renderRack(refocus) {
       if (clip.end == null) clip.end = clip.duration;
       title.textContent = clip.title;
       title.title = clip.title;
+
+      // say where it came from when that is not YouTube
+      const tag = node.querySelector('.src-tag');
+      if (clip.source === 'upload') { tag.textContent = 'File'; tag.classList.add('file'); tag.hidden = false; }
+      else if (clip.source === 'instagram') { tag.textContent = 'Instagram'; tag.classList.add('ig'); tag.hidden = false; }
+      else if (!isYouTube(clip)) { tag.textContent = clip.source; tag.hidden = false; }
 
       wireThumb(node.querySelector('.photo'), clip);
 
@@ -455,6 +477,7 @@ function renderRack(refocus) {
 
       wireScope({ clip, scope, sel, hIn, hOut, paint, clamp });
       wirePreview(node.querySelector('.hear'), node.querySelector('.peek'), clip);
+      wireKnobs(node, clip, i === firstGood);
       paint();
     }
 
@@ -468,7 +491,8 @@ function renderRack(refocus) {
     rack.appendChild(node);
   });
 
-  $('#btn-add').hidden = false;
+  $('#rack-empty').hidden = clips.length > 0;
+  $('#btn-add').hidden = clips.length === 0;
   paintBench();
 
   if (refocus != null) {
@@ -481,7 +505,8 @@ function renderRack(refocus) {
    placeholder up until one of them actually decodes. */
 function wireThumb(photo, clip) {
   const img = photo.querySelector('img');
-  const id = clip.video_id;
+  // the i.ytimg.com guesses only mean anything for a YouTube id
+  const id = isYouTube(clip) ? clip.video_id : null;
   const tries = [
     clip.thumbnail,
     id && `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
@@ -609,12 +634,42 @@ function wireScope({ clip, scope, sel, hIn, hOut, paint, clamp }) {
   hOut.addEventListener('keydown', key('out'));
 }
 
+/* A clip's own volume, and how it blends in from the one before. Left alone,
+   the blend follows the crossfade fader for the whole mix. */
+function wireKnobs(node, clip, first) {
+  const gain = node.querySelector('.k-gain');
+  const gainVal = node.querySelector('.k-gain-v');
+  const xf = node.querySelector('.k-xf');
+
+  const paintGain = () => {
+    const v = clip.gain_db || 0;
+    gainVal.textContent = v > 0 ? `+${v} dB` : `${v} dB`;
+  };
+  gain.value = clip.gain_db || 0;
+  paintGain();
+  gain.addEventListener('input', () => { clip.gain_db = Number(gain.value); paintGain(); });
+  gain.addEventListener('change', () => { play('tick'); tap('selection'); });
+  // double click puts it back where it started
+  gain.addEventListener('dblclick', () => { clip.gain_db = 0; gain.value = 0; paintGain(); play('tick'); });
+
+  if (first) { node.querySelector('.k-blend').remove(); return; }
+  xf.value = clip.crossfade_ms == null ? '' : String(clip.crossfade_ms);
+  // a value saved by an older mix might not be one of the choices
+  if (xf.value === '' && clip.crossfade_ms != null) clip.crossfade_ms = null;
+  xf.addEventListener('change', () => {
+    clip.crossfade_ms = xf.value === '' ? null : Number(xf.value);
+    paintBench();
+    play('tick');
+  });
+}
+
 /* Preview the exact slice before committing to it. Plays the range straight
    from YouTube in a small frame, so nothing has to be downloaded first. */
 let openPeek = null;
 
 function wirePreview(btn, peek, clip) {
   const frame = peek.querySelector('.peek-frame');
+  const note = peek.querySelector('.peek-note');
 
   const close = () => {
     frame.innerHTML = '';
@@ -633,16 +688,35 @@ function wirePreview(btn, peek, clip) {
 
     const s = Math.max(0, Math.floor(clip.start));
     const e = Math.max(s + 1, Math.ceil(clip.end));
-    const src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(clip.video_id)}`
-      + `?start=${s}&end=${e}&autoplay=1&rel=0&modestbranding=1&playsinline=1`;
-
-    const iframe = document.createElement('iframe');
-    iframe.src = src;
-    iframe.title = `Preview of ${clip.title}`;
-    iframe.allow = 'autoplay; encrypted-media; picture-in-picture';
-    iframe.referrerPolicy = 'strict-origin-when-cross-origin';
     frame.innerHTML = '';
-    frame.appendChild(iframe);
+
+    if (isYouTube(clip)) {
+      const src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(clip.video_id)}`
+        + `?start=${s}&end=${e}&autoplay=1&rel=0&modestbranding=1&playsinline=1`;
+
+      const iframe = document.createElement('iframe');
+      iframe.src = src;
+      iframe.title = `Preview of ${clip.title}`;
+      iframe.allow = 'autoplay; encrypted-media; picture-in-picture';
+      iframe.referrerPolicy = 'strict-origin-when-cross-origin';
+      frame.appendChild(iframe);
+      frame.classList.remove('sound');
+      note.textContent = 'playing straight from YouTube, just this bit';
+    } else {
+      // a reel or a file has no player to embed, so play the audio this deck
+      // cuts from; the #t fragment stops it at the out point
+      const q = clip.url ? `?url=${encodeURIComponent(clip.url)}` : '';
+      const player = document.createElement('audio');
+      player.src = api(`/api/source/${encodeURIComponent(clip.video_id)}/audio${q}#t=${s},${e}`);
+      player.controls = true;
+      player.autoplay = true;
+      player.setAttribute('aria-label', `Preview of ${clip.title}`);
+      frame.appendChild(player);
+      frame.classList.add('sound');
+      note.textContent = clip.source === 'upload'
+        ? 'playing your file, just this bit'
+        : 'fetching the reel first, then just this bit';
+    }
 
     peek.hidden = false;
     btn.classList.add('on');
@@ -668,11 +742,9 @@ makeSortable(rack, {
 
 function goodClips() { return clips.filter((c) => !c.error); }
 
+// each join can have its own blend now, so add it up the way the server will
 function totalSec() {
-  const good = goodClips();
-  const raw = good.reduce((n, c) => n + Math.max(0, (c.end ?? 0) - (c.start ?? 0)), 0);
-  const overlap = (Number(fader.value) / 1000) * Math.max(0, good.length - 1);
-  return Math.max(0, raw - overlap);
+  return buildTimeline(goodClips(), Number(fader.value)).total;
 }
 
 function paintBench() {
@@ -680,6 +752,10 @@ function paintBench() {
   $('#n-clips').textContent = String(n).padStart(2, '0');
   $('#n-total').textContent = fmt(totalSec());
   $('#btn-cut').disabled = n === 0;
+  const format = $('#opt-format')?.value.toUpperCase() || 'MP3';
+  $('#export-note').textContent = n
+    ? `${n} ${n === 1 ? 'clip' : 'clips'}, ${fmt(totalSec())} as ${format}`
+    : 'Add a track to export a mix';
 }
 
 const fader = $('#fader');
@@ -690,7 +766,8 @@ fader.addEventListener('input', () => {
 });
 fader.addEventListener('change', () => { play('tick'); tap('selection'); });
 
-$('#btn-back-write').addEventListener('click', () => showBay('write'));
+paintRange(fader);
+fader.addEventListener('input', () => paintRange(fader));
 
 /* Add another clip without leaving the rack. Enter works, and so does the
    button, so nobody has to guess that Enter is the way. */
@@ -705,9 +782,9 @@ function openAdder() {
   row.innerHTML = `
     <div class="adder-wrap">
       <input class="add-input" type="text" aria-label="Song to add, with timestamps"
-             placeholder="song name or youtube link, with times: Kesariya 0:45 to 1:10" />
+             placeholder="Song name or link, with times: Kesariya 0:45 to 1:10" />
     </div>
-    <button class="add-go" type="button">look it up</button>
+    <button class="add-go" type="button">Add</button>
     <p class="adder-hint">times are optional. leave them out and you get the <b>whole track</b>.</p>`;
   rack.appendChild(row);
 
@@ -723,7 +800,7 @@ function openAdder() {
     if (!q) { play('error'); tap('warning'); field.focus(); return; }
     field.disabled = true;
     go.disabled = true;
-    go.textContent = 'looking';
+    go.textContent = 'Finding…';
     try {
       const parsed = await post('/api/parse', { text: q });
       const found = await post('/api/resolve', { clips: parsed.clips });
@@ -744,26 +821,16 @@ function openAdder() {
   });
 }
 
-/* ── 3. cut the tape ──────────────────────────────────────── */
+/* ── 3. export ────────────────────────────────────────────── */
 
 const deck = $('#tapedeck');
 const rail = $('#rail-fill');
 const counter = $('#counter');
 const deckMsg = $('#deck-msg');
-const needleL = $('#needle-l');
-const needleR = $('#needle-r');
-
-function setNeedles(v) {
-  // -52deg is rest, +52deg is pinned
-  const a = -52 + Math.max(0, Math.min(1, v)) * 104;
-  needleL.style.transform = `rotate(${a}deg)`;
-  needleR.style.transform = `rotate(${a - 4 + Math.random() * 8}deg)`;
-}
 
 function setRail(pct, msg) {
   rail.style.width = `${pct}%`;
-  counter.textContent = String(Math.round(pct)).padStart(3, '0');
-  setNeedles(pct / 100 * .82 + Math.random() * .12);
+  counter.textContent = `${Math.round(pct)}%`;
   if (msg) deckMsg.textContent = msg;
 }
 
@@ -790,11 +857,11 @@ function tidyTitle(raw) {
 }
 
 function buildTimeline(list, crossfadeMs) {
-  const C = crossfadeMs / 1000;
   let total = 0;
   const segs = [];
 
   list.forEach((c, i) => {
+    const C = (c.crossfade_ms ?? crossfadeMs) / 1000;
     const d = Math.max(0, (c.end ?? 0) - (c.start ?? 0));
     const fade = i === 0 ? 0 : Math.min(C, total, d);
     const from = Math.max(0, total - fade);
@@ -806,30 +873,43 @@ function buildTimeline(list, crossfadeMs) {
 }
 
 let mix = { segs: [], total: 0 };
+// the clips as they were sent, which the server's timeline indexes into
+let cutList = [];
 
 $('#btn-cut').addEventListener('click', () => cutTape());
 
 async function cutTape() {
   const good = goodClips();
   if (!good.length) return;
+  cutList = good;
   mix = buildTimeline(good, Number(fader.value));
 
-  showBay('deck');
+  audio.pause();
   $('#done').hidden = true;
   $('#jam').hidden = true;
+  showBay('deck');
   deck.classList.remove('halt');
-  stage.setBusy(true);
   rail.classList.remove('err');
-  $('#deck-title').textContent = 'rolling';
-  $('#deck-note').textContent = 'this takes a minute, the tape is being cut';
-  setRail(4, 'threading the tape');
+  $('#btn-cut').disabled = true;
+  $('#deck-title').textContent = 'Rendering your mix';
+  $('#deck-note').textContent = 'this takes a minute or so';
+  setRail(4, 'getting started');
   play('loading');
   tap('medium');
 
   try {
     const res = await post('/api/export', {
-      clips: good.map((c) => ({ video_id: c.video_id, title: c.title, start: c.start, end: c.end })),
+      clips: good.map((c) => ({
+        video_id: c.video_id,
+        url: isYouTube(c) ? null : c.url,
+        title: c.title,
+        start: c.start,
+        end: c.end,
+        gain_db: c.gain_db || 0,
+        crossfade_ms: c.crossfade_ms ?? null,
+      })),
       crossfade_ms: Number(fader.value),
+      ...mixOptions(),
     });
     jobId = res.job_id;
     watchJob(good.length);
@@ -841,6 +921,7 @@ async function cutTape() {
 function pctFor(step, total) {
   if (!step) return 6;
   if (/merging/i.test(step)) return 92;
+  if (/tempo|volume/i.test(step)) return 90;
   const m = step.match(/\((\d+)\s*\/\s*(\d+)\)/);
   if (m) {
     const i = Number(m[1]) - 1;
@@ -857,6 +938,8 @@ function humanStep(step) {
   const pair = m ? ` ${m[1]} of ${m[2]}` : '';
   if (/downloading/i.test(step)) return `pulling clip${pair}`;
   if (/trimming/i.test(step)) return `cutting clip${pair}`;
+  if (/tempo/i.test(step)) return 'lining up the beats';
+  if (/volume/i.test(step)) return 'evening out the volume';
   if (/merging/i.test(step)) return 'splicing it together';
   return step.toLowerCase();
 }
@@ -902,12 +985,25 @@ const scrubFill = $('#scrub-fill');
 function finish(status) {
   setRail(100, 'done');
   deck.classList.add('halt');
-  stage.setBusy(false);
-  // a burst out of the middle of the deck when the tape lands
-  const r = deck.getBoundingClientRect();
-  stage.poke(r.left + r.width / 2, r.top + r.height / 2, 1.8);
-  $('#deck-title').textContent = 'side A';
+  paintBench();
+  $('#deck-title').textContent = 'Your mix is ready';
   $('#deck-note').textContent = 'name it, play it, send it';
+  counter.textContent = '';
+
+  jobFile = { ext: status?.ext || 'mp3', mime: status?.mime || 'audio/mpeg' };
+
+  // The server says where each clip really landed. That is the truth once a
+  // clip was skipped or played faster to match the beat, which the trims alone
+  // cannot predict.
+  const placed = status?.timeline || [];
+  if (placed.length) {
+    mix = {
+      segs: placed.map((t) => ({
+        title: tidyTitle(t.title) || 'clip', from: t.from, to: t.to, fade: t.fade, clip: cutList[t.index],
+      })),
+      total: placed[placed.length - 1].to,
+    };
+  }
 
   // the player streams the plain url; only the save link carries the name
   audio.src = api(`/api/export/${jobId}/download`);
@@ -916,24 +1012,27 @@ function finish(status) {
 
   const used = status?.used ?? goodClips().length;
   const skipped = status?.skipped || [];
-  const note = $('#skipped');
+  const lines = [];
   if (skipped.length) {
     const names = skipped.map((s) => s.title).join(', ');
-    const one = skipped.length === 1;
-    note.textContent = one
-      ? `YouTube would not hand over ${names}, so it is not in here. everything else made it.`
-      : `YouTube would not hand over ${skipped.length} of these, so they are not in here: ${names}. everything else made it.`;
-    note.hidden = false;
-  } else {
-    note.hidden = true;
+    lines.push(skipped.length === 1
+      ? `could not get ${names}, so it is not in here. everything else made it.`
+      : `could not get ${skipped.length} of these, so they are not in here: ${names}. everything else made it.`);
   }
+  const nudged = status?.tempo || [];
+  if (nudged.length) {
+    lines.push(`played ${nudged.length === 1 ? '1 song' : `${nudged.length} songs`} a little `
+      + 'faster or slower to sit on the beat of the first.');
+  }
+  const note = $('#skipped');
+  note.textContent = lines.join(' ');
+  note.hidden = !lines.length;
 
-  $('#mix-meta').textContent = `${used} CLIPS / ${fmt(totalSec())}`;
+  $('#mix-meta').textContent = `${used} ${used === 1 ? 'clip' : 'clips'} · ${fmt(mix.total || totalSec())}`;
   paintSegments();
   $('#done').hidden = false;
   play('success');
   tap('success');
-  setNeedles(0);
 }
 
 /* Draw each clip's stretch onto the scrub bar, with the crossfade overlaps
@@ -1007,12 +1106,12 @@ function clearNowPlaying() {
 
 function jam(msg) {
   deck.classList.add('halt');
-  stage.setBusy(false);
   rail.classList.add('err');
-  $('#deck-title').textContent = 'tape jammed';
-  $('#deck-note').textContent = 'nothing lost, go back and try again';
+  paintBench();
+  $('#deck-title').textContent = 'Export failed';
+  $('#deck-note').textContent = 'nothing lost, change something and try again';
   setRail(100, 'stopped');
-  setNeedles(0);
+  counter.textContent = '';
   const blocked = /sign in to confirm|not a bot|429/i.test(msg);
   $('#jam-msg').textContent = blocked
     ? `YouTube blocked this download. ${msg}`
@@ -1040,37 +1139,28 @@ function mixName() {
 function syncName() {
   if (!jobId) return;
   const stem = mixName();
-  saveBtn.setAttribute('download', `${stem}.mp3`);
+  saveBtn.setAttribute('download', `${stem}.${jobFile.ext}`);
   saveBtn.href = api(`/api/export/${jobId}/download?name=${encodeURIComponent(stem)}`);
 }
 nameField.addEventListener('input', syncName);
 nameField.addEventListener('change', () => { syncName(); play('tick'); });
 
 playBtn.addEventListener('click', () => {
-  stage.listen(audio);
-  stage.resume();
   if (audio.paused) audio.play(); else audio.pause();
 });
 
 audio.addEventListener('play', () => {
   playBtn.classList.add('on');
-  $('#done').classList.add('spinning');
-  deck.classList.remove('halt');
+  playBtn.setAttribute('aria-label', 'Pause the mix');
   if (openPeek) openPeek();
   play('press');
-  startDeckMeters();
 });
 audio.addEventListener('pause', () => {
   playBtn.classList.remove('on');
-  $('#done').classList.remove('spinning');
-  deck.classList.add('halt');
-  stopDeckMeters();
+  playBtn.setAttribute('aria-label', 'Play the mix');
 });
 audio.addEventListener('ended', () => {
   playBtn.classList.remove('on');
-  $('#done').classList.remove('spinning');
-  deck.classList.add('halt');
-  stopDeckMeters();
   clearNowPlaying();
   play('droplet');
 });
@@ -1078,32 +1168,15 @@ audio.addEventListener('loadedmetadata', () => {
   $('#t-end').textContent = fmt(audio.duration);
 });
 // timeupdate only fires while playing, so keep the readout honest when someone
-// drags the playhead on a paused tape
-audio.addEventListener('seeked', () => {
-  paintNowPlaying(audio.currentTime);
-  counter.textContent = String(Math.floor(audio.currentTime) % 1000).padStart(3, '0');
-});
-audio.addEventListener('timeupdate', () => {
+// drags the playhead on a paused mix
+function paintPlayhead() {
   const p = audio.duration ? audio.currentTime / audio.duration : 0;
   scrubFill.style.width = `${p * 100}%`;
   $('#t-now').textContent = fmt(audio.currentTime);
   paintNowPlaying(audio.currentTime);
-});
-
-// the meters follow the music while it plays, and the deck names the song
-function startDeckMeters() {
-  stopDeckMeters();
-  deckTimer = setInterval(() => {
-    const lv = stage.level();
-    setNeedles(Math.min(1, lv * 2.6));
-    counter.textContent = String(Math.floor(audio.currentTime) % 1000).padStart(3, '0');
-    paintNowPlaying(audio.currentTime);
-  }, 90);
 }
-function stopDeckMeters() {
-  clearInterval(deckTimer);
-  deckTimer = null;
-}
+audio.addEventListener('seeked', paintPlayhead);
+audio.addEventListener('timeupdate', paintPlayhead);
 
 function seek(e) {
   const r = scrubRail.getBoundingClientRect();
@@ -1140,7 +1213,7 @@ sendBtn.addEventListener('click', async () => {
       if (!r.ok) throw new Error('could not read the tape');
       return r.blob();
     });
-    const file = new File([blob], `${stem}.mp3`, { type: 'audio/mpeg' });
+    const file = new File([blob], `${stem}.${jobFile.ext}`, { type: jobFile.mime });
 
     // the real prize: hand over the file itself, so it lands in WhatsApp or
     // wherever as a playable mp3 rather than as a link to this site
@@ -1155,7 +1228,7 @@ sendBtn.addEventListener('click', async () => {
     const tmp = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = tmp;
-    a.download = `${stem}.mp3`;
+    a.download = `${stem}.${jobFile.ext}`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(tmp), 4000);
     said('saved, now attach it anywhere');
@@ -1175,9 +1248,8 @@ sendBtn.addEventListener('click', async () => {
 $('#btn-edit').addEventListener('click', () => {
   audio.pause();
   clearNowPlaying();
-  $('#rack-note').textContent = 'change what you like, then cut it again';
+  $('#rack-note').textContent = 'change what you like, then export again';
   showBay('rack');
-  play('page');
 });
 
 $('#btn-fresh').addEventListener('click', () => {
@@ -1199,11 +1271,16 @@ $('#btn-fresh').addEventListener('click', () => {
   markPicked(null);
   fader.value = 0;
   $('#fader-val').textContent = 'off';
+  paintRange(fader);
   $('#done').hidden = true;
   $('#jam').hidden = true;
+  BAYS.deck.hidden = true;
   rail.classList.remove('err');
   nameField.value = 'my mashup';
-  paintBench();
+  jobFile = { ext: 'mp3', mime: 'audio/mpeg' };
+  cutList = [];
+  $('#rack-note').textContent = RACK_NOTE;
+  renderRack();
   showBay('write');
   play('sparkle');
   tap('nudge');
@@ -1221,7 +1298,7 @@ MIXES.forEach((mix) => {
   b.innerHTML = '<b></b><span></span><i class="jcard-n"></i>';
   b.querySelector('b').textContent = mix.name;
   b.querySelector('span').textContent = mix.blurb;
-  // each sleeve says how many songs are on it
+  // each one says how many songs are on it
   b.querySelector('.jcard-n').textContent = `${mix.clips.length} songs`;
   b.addEventListener('click', () => loadMix(mix));
   cards.appendChild(b);
@@ -1234,20 +1311,21 @@ function markPicked(id) {
   });
 }
 
-/* On a phone only the first two sleeves are out, so the home screen stays
-   short but never looks empty. On desktop all of them show and this is inert. */
-const PEEK_ON_PHONE = 2;
+/* The first few are out and the rest wait behind "show all", so the panel
+   stays short enough to leave room for the prompts under it. */
+const SHOWN = 4;
 const juke = $('#juke');
 const jukeMore = $('#btn-juke-more');
 const jukeLabel = jukeMore.querySelector('.juke-more-t');
 
-$('#juke-count').textContent = `+${Math.max(0, MIXES.length - PEEK_ON_PHONE)}`;
+$('#juke-count').textContent = `+${Math.max(0, MIXES.length - SHOWN)}`;
+jukeMore.hidden = MIXES.length <= SHOWN;
 
 jukeMore.addEventListener('click', () => {
   const open = juke.classList.toggle('open');
   jukeMore.setAttribute('aria-expanded', String(open));
-  jukeLabel.textContent = open ? 'fewer mixes' : 'more mixes';
-  $('#juke-count').textContent = open ? '' : `+${MIXES.length - PEEK_ON_PHONE}`;
+  jukeLabel.textContent = open ? 'Show fewer' : 'Show all';
+  $('#juke-count').textContent = open ? '' : `+${MIXES.length - SHOWN}`;
   play(open ? 'page' : 'droplet');
   tap('light');
 });
@@ -1285,12 +1363,230 @@ function loadMix(mix) {
   markPicked(mix.id);
 }
 
+/* ── how the tape is finished ─────────────────────────────── */
+
+const OPTS_KEY = 'mashupdeck.options';
+const optEls = {
+  fade_in_ms: $('#opt-fade-in'),
+  fade_out_ms: $('#opt-fade-out'),
+  normalize: $('#opt-even'),
+  match_tempo: $('#opt-tempo'),
+  format: $('#opt-format'),
+  bitrate: $('#opt-bitrate'),
+};
+
+function mixOptions() {
+  return {
+    fade_in_ms: Number(optEls.fade_in_ms.value),
+    fade_out_ms: Number(optEls.fade_out_ms.value),
+    normalize: optEls.normalize.checked,
+    match_tempo: optEls.match_tempo.checked,
+    format: optEls.format.value,
+    bitrate: optEls.bitrate.value,
+  };
+}
+
+function setMixOptions(o) {
+  if (!o) return;
+  Object.entries(optEls).forEach(([k, el]) => {
+    if (o[k] == null) return;
+    if (el.type === 'checkbox') el.checked = Boolean(o[k]);
+    else if ([...el.options].some((op) => op.value === String(o[k]))) el.value = String(o[k]);
+  });
+  paintOptions();
+}
+
+// a wav is not compressed, so there is no quality to pick
+function paintOptions() {
+  optEls.bitrate.disabled = optEls.format.value === 'wav';
+}
+
+// kept on this device, since these are a taste more than part of one mix
+try { setMixOptions(JSON.parse(localStorage.getItem(OPTS_KEY))); } catch { /* private window */ }
+paintOptions();
+Object.values(optEls).forEach((el) => el.addEventListener('change', () => {
+  paintOptions();
+  paintBench();
+  try { localStorage.setItem(OPTS_KEY, JSON.stringify(mixOptions())); } catch { /* private window */ }
+  play('tick');
+  tap('selection');
+}));
+
+/* ── songs from this computer ─────────────────────────────── */
+
+const filePick = $('#file-pick');
+$('#btn-upload').addEventListener('click', () => filePick.click());
+$('#btn-upload-write').addEventListener('click', () => filePick.click());
+filePick.addEventListener('change', () => {
+  const files = [...filePick.files];
+  filePick.value = '';   // so picking the same file again still counts
+  if (files.length) addFiles(files);
+});
+
+// dropping a file anywhere works too, rather than the browser opening it and
+// throwing away the tracks
+const emptyBox = $('#rack-empty');
+addEventListener('dragover', (e) => {
+  if (!e.dataTransfer?.types?.includes('Files')) return;
+  e.preventDefault();
+  emptyBox.classList.add('drop');
+});
+addEventListener('dragleave', (e) => { if (!e.relatedTarget) emptyBox.classList.remove('drop'); });
+addEventListener('drop', (e) => {
+  emptyBox.classList.remove('drop');
+  const files = [...(e.dataTransfer?.files || [])];
+  if (!files.length) return;
+  e.preventDefault();
+  const playable = files.filter((f) => /^(audio|video)\//.test(f.type) || !f.type);
+  if (playable.length) addFiles(playable);
+  else { play('error'); tap('warning'); }
+});
+
+/* The file goes up as the raw body and comes back as a clip like any other,
+   so trimming, levels and previews all work the same on it. */
+async function addFiles(files) {
+  showBay('rack', true);
+  appendGhosts(files.map((f) => ({ raw: f.name })));
+
+  const note = $('#rack-note');
+  let failed = false;
+  play('loading');
+  for (const [n, file] of files.entries()) {
+    note.textContent = files.length > 1
+      ? `bringing in your files (${n + 1} of ${files.length})`
+      : `bringing in ${file.name}`;
+    try {
+      const r = await fetch(api(`/api/upload?name=${encodeURIComponent(file.name)}`), {
+        method: 'POST',
+        headers: { 'Content-Type': file.type || 'application/octet-stream' },
+        body: file,
+      });
+      const got = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(got.error || `the deck said no (${r.status})`);
+      clips.push(got);
+    } catch (e) {
+      failed = true;
+      clips.push({ error: e.message, source: 'upload', query: file.name });
+    }
+    // the ones still on their way keep their placeholders
+    renderRack();
+    appendGhosts(files.slice(n + 1).map((f) => ({ raw: f.name })));
+  }
+  markPicked(null);
+  note.textContent = RACK_NOTE;
+  play(failed ? 'error' : 'ready');
+  tap(failed ? 'error' : 'success');
+}
+
+/* ── mixes kept on this device ────────────────────────────── */
+
+const SAVED_KEY = 'mashupdeck.saved';
+const savedRow = $('#saved-row');
+const savedBox = $('#saved');
+const keptNote = $('#kept-note');
+
+function readSaved() {
+  try { return JSON.parse(localStorage.getItem(SAVED_KEY)) || []; } catch { return []; }
+}
+
+function writeSaved(list) {
+  try { localStorage.setItem(SAVED_KEY, JSON.stringify(list)); return true; } catch { return false; }
+}
+
+function paintSaved() {
+  const list = readSaved();
+  savedRow.hidden = !list.length;
+  savedBox.replaceChildren(...list.map((m) => {
+    const wrap = document.createElement('span');
+    wrap.className = 'kept-mix';
+
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'sticker';
+    b.textContent = m.name;
+    b.title = `${m.clips.length} clips, saved ${new Date(m.saved).toLocaleDateString()}`;
+    b.addEventListener('click', () => loadSaved(m));
+
+    const x = document.createElement('button');
+    x.type = 'button';
+    x.className = 'kept-x';
+    x.setAttribute('aria-label', `Forget ${m.name}`);
+    x.textContent = '×';
+    x.addEventListener('click', () => {
+      writeSaved(readSaved().filter((o) => o.id !== m.id));
+      paintSaved();
+      play('droplet');
+      tap('light');
+    });
+
+    wrap.append(b, x);
+    return wrap;
+  }));
+}
+
+$('#btn-keep').addEventListener('click', () => {
+  const good = goodClips();
+  if (!good.length) { play('error'); tap('warning'); return; }
+
+  // the cassette label is the name; until it has one, name it after the songs
+  let name = (nameField.value || '').trim();
+  if (!name || name === 'my mashup') {
+    const first = tidyTitle(good[0].title) || 'mix';
+    name = good.length > 1 ? `${first} + ${good.length - 1} more` : first;
+    nameField.value = name;
+  }
+
+  const entry = {
+    id: Date.now().toString(36),
+    name,
+    saved: Date.now(),
+    crossfade_ms: Number(fader.value),
+    options: mixOptions(),
+    clips: good.map(({ video_id, url, source, title, thumbnail, duration, start, end, gain_db, crossfade_ms }) => (
+      { video_id, url, source, title, thumbnail, duration, start, end, gain_db, crossfade_ms })),
+  };
+  // the same name again is an update, not a second copy
+  const ok = writeSaved([entry, ...readSaved().filter((m) => m.name !== name)].slice(0, 30));
+  const uploads = good.some((c) => c.source === 'upload');
+  keptNote.textContent = !ok
+    ? 'this browser would not let it be saved'
+    : `saved as "${name}" on this device.${uploads ? ' files from this computer only stay on the deck for a while, so add those again later.' : ''}`;
+  keptNote.hidden = false;
+  paintSaved();
+  play(ok ? 'success' : 'error');
+  tap(ok ? 'success' : 'error');
+});
+
+function loadSaved(m) {
+  clips = m.clips.map((c) => ({ ...c }));
+  fader.value = m.crossfade_ms || 0;
+  fader.dispatchEvent(new Event('input'));
+  setMixOptions(m.options);
+  nameField.value = m.name;
+  // written out the way someone could have typed it, links where there are links
+  input.value = m.clips
+    .filter((c) => c.source !== 'upload')
+    .map((c) => `${c.url || c.title} from ${fmt(c.start)} to ${fmt(c.end)}`)
+    .join('\nthen ');
+  if (mode === 'rows') sheet.fromText(input.value);
+  markPicked(null);
+
+  play('sparkle');
+  tap('medium');
+  showBay('rack');
+  $('#rack-note').textContent = 'your mix, the way you left it';
+  renderRack();
+}
+
+paintSaved();
+
 /* ── keyboard ─────────────────────────────────────────────── */
 
 document.addEventListener('keydown', (e) => {
+  // Ctrl+Enter finds what is written while writing, and exports otherwise
   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-    if (!BAYS.write.classList.contains('off')) $('#btn-read').click();
-    else if (!BAYS.rack.classList.contains('off')) $('#btn-cut').click();
+    if (BAYS.write.contains(document.activeElement)) $('#btn-read').click();
+    else if (!$('#btn-cut').disabled) $('#btn-cut').click();
     return;
   }
   // space plays the finished mix, unless you are typing

@@ -1,7 +1,9 @@
 import base64
 import os
+import re
 import time
 import random
+import threading
 
 import yt_dlp
 
@@ -81,8 +83,8 @@ def _install_cookies(text: str, source: str):
         l for l in text.split('\n')
         if l.strip() and not l.lstrip().startswith('#')
     ]
-    if not any('youtube.com' in l for l in rows):
-        print('[cookies] the file has no youtube.com entries, ignoring it')
+    if not any(site in l for l in rows for site in ('youtube.com', 'instagram.com')):
+        print('[cookies] the file has no youtube.com or instagram.com entries, ignoring it')
         COOKIE_STATUS = f'invalid ({source})'
         return None
 
@@ -169,13 +171,67 @@ _CLIENTS = _CLIENTS_COOKIED if _COOKIEFILE else _CLIENTS_BARE
 
 _BOT_HINTS = ('not a bot', 'sign in to confirm', 'too many requests', 'http error 429')
 
-# Space out consecutive downloads a little; back to back hits are what trips it.
+# Space out the starts of downloads a little; back to back hits are what trips
+# it. Several downloads run at once now, so this hands out start slots under a
+# lock rather than remembering when the last one finished.
 _MIN_GAP_SECONDS = 1.2
-_last_download_at = 0.0
+_next_slot = 0.0
+_slot_lock = threading.Lock()
+
+# One download per source at a time, so the same song twice in a mix, or in two
+# mixes cut at once, is fetched once and the second caller gets the file.
+_source_locks: dict = {}
+_source_locks_guard = threading.Lock()
+
+# A clip id ends up in a file name, so it is checked before it gets near a path.
+# YouTube ids are bare. Anything else carries a short tag and a dot, which a
+# YouTube id never contains: "ig.C8xYz12AbCd" for a reel, "up.3f9a..." for a file
+# someone uploaded.
+_ID_RE = re.compile(r'^(?:[a-z]{2,10}\.)?[\w-]{1,64}$')
+UPLOAD_TAG = 'up.'
 
 
 class Blocked(Exception):
     """YouTube refused this download rather than the video being unusable."""
+
+
+def _wait_turn():
+    global _next_slot
+    with _slot_lock:
+        now = time.time()
+        at = max(now, _next_slot)
+        _next_slot = at + _MIN_GAP_SECONDS
+    if at > now:
+        time.sleep(at - now)
+
+
+def _source_lock(video_id: str) -> threading.Lock:
+    with _source_locks_guard:
+        return _source_locks.setdefault(video_id, threading.Lock())
+
+
+def _touch(path: str):
+    """Reuse counts as use, so the janitor ages a file from when it was last needed."""
+    try:
+        os.utime(path, None)
+    except OSError:
+        pass
+
+
+def is_youtube_id(video_id: str) -> bool:
+    return '.' not in (video_id or '')
+
+
+def source_path(video_id: str) -> str:
+    """Where a clip's audio lives on disk, once the id has been checked."""
+    if not _ID_RE.match(video_id or ''):
+        raise ValueError('that is not a clip this deck knows about')
+    return os.path.join(DOWNLOAD_DIR, f'{video_id}.mp3')
+
+
+def _source_tag(extractor: str) -> str:
+    name = re.sub(r'[^a-z]', '', (extractor or '').lower())
+    return {'instagram': 'ig'}.get(name, name[:10] if len(name) >= 2 else 'web')
 
 
 def _base_opts() -> dict:
@@ -242,13 +298,27 @@ def resolve_clip(query_or_url: str) -> dict:
                 if not entries:
                     raise ValueError(f'nothing on YouTube for "{query_or_url}"')
                 info = entries[0]
-            found = {
-                'video_id': info['id'],
-                'title': info.get('title') or info['id'],
+            extractor = info.get('extractor_key') or info.get('ie_key') or 'Youtube'
+            raw_id = re.sub(r'[^\w-]', '', str(info['id']))[:64]
+            if extractor.lower().startswith('youtube'):
+                found = {
+                    'video_id': raw_id,
+                    'source': 'youtube',
+                    'url': f'https://www.youtube.com/watch?v={raw_id}',
+                }
+            else:
+                # a reel is cut from the link it came from, not a watch page
+                tag = _source_tag(extractor)
+                found = {
+                    'video_id': f'{tag}.{raw_id}',
+                    'source': 'instagram' if tag == 'ig' else tag,
+                    'url': info.get('webpage_url') or query_or_url,
+                }
+            found.update({
+                'title': info.get('title') or (info.get('description') or '')[:80] or raw_id,
                 'thumbnail': info.get('thumbnail'),
                 'duration': info.get('duration'),
-                'url': f"https://www.youtube.com/watch?v={info['id']}",
-            }
+            })
             if len(_RESOLVE_CACHE) >= _RESOLVE_CACHE_MAX:
                 _RESOLVE_CACHE.clear()
             _RESOLVE_CACHE[key] = found
@@ -264,18 +334,32 @@ def resolve_clip(query_or_url: str) -> dict:
     raise RuntimeError(last_err or f'could not look up "{query_or_url}"')
 
 
-def download_audio(video_id: str, progress_hook=None) -> str:
-    """Fetch one video's audio as mp3, reusing the cached file when we have it."""
-    global _last_download_at
+def download_audio(video_id: str, url: str = None, progress_hook=None) -> str:
+    """Fetch one clip's audio as mp3, reusing the cached file when we have it.
 
-    final_path = os.path.join(DOWNLOAD_DIR, f'{video_id}.mp3')
-    if os.path.exists(final_path):
-        return final_path
+    A bare id is a YouTube video and `url` is ignored, so a caller cannot point
+    a YouTube id at some other address. A tagged id needs the link it came from,
+    except an upload, which only ever exists as the file on disk.
+    """
+    final_path = source_path(video_id)
 
-    gap = _MIN_GAP_SECONDS - (time.time() - _last_download_at)
-    if gap > 0:
-        time.sleep(gap)
+    with _source_lock(video_id):
+        if os.path.exists(final_path):
+            _touch(final_path)
+            return final_path
 
+        if video_id.startswith(UPLOAD_TAG):
+            raise RuntimeError('this uploaded file has been cleared off the deck, add it again')
+        if is_youtube_id(video_id):
+            return _download(video_id, f'https://www.youtube.com/watch?v={video_id}',
+                             final_path, _CLIENTS, progress_hook)
+        if not url:
+            raise RuntimeError('no link to fetch this one from')
+        # the player clients are a YouTube thing, so other sites get one go
+        return _download(video_id, url, final_path, (None,), progress_hook)
+
+
+def _download(video_id: str, target: str, final_path: str, clients, progress_hook) -> str:
     out_tmpl = os.path.join(DOWNLOAD_DIR, f'{video_id}.%(ext)s')
     base = {
         **_base_opts(),
@@ -291,11 +375,11 @@ def download_audio(video_id: str, progress_hook=None) -> str:
         base['progress_hooks'] = [progress_hook]
 
     errors = []
-    for attempt, client in enumerate(_CLIENTS):
+    for attempt, client in enumerate(clients):
+        _wait_turn()
         try:
             with yt_dlp.YoutubeDL(_with_client(base, client)) as ydl:
-                ydl.download([f'https://www.youtube.com/watch?v={video_id}'])
-            _last_download_at = time.time()
+                ydl.download([target])
             if os.path.exists(final_path):
                 return final_path
             errors.append('ffmpeg produced no mp3')
@@ -303,10 +387,14 @@ def download_audio(video_id: str, progress_hook=None) -> str:
             errors.append(str(e).replace('\n', ' ')[:200])
 
         # Ease off before trying the next client.
-        time.sleep(1.6 * (attempt + 1) + random.random())
+        if attempt + 1 < len(clients):
+            time.sleep(1.6 * (attempt + 1) + random.random())
 
-    _last_download_at = time.time()
     joined = ' | '.join(errors)
+    if 'instagram.com' in target and 'login' in joined.lower():
+        # Instagram hides most reels from anyone not signed in
+        raise Blocked('Instagram wants a signed in session for this reel. '
+                      'A cookies.txt with instagram.com cookies fixes that')
     if any(_looks_blocked(e) for e in errors):
         if _COOKIEFILE:
             raise Blocked('YouTube is rate limiting this download right now')

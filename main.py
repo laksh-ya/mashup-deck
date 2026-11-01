@@ -1,14 +1,17 @@
 import os
 import re
 import sys
+import time
 import uuid
 import threading
 import traceback
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import asynccontextmanager
 from typing import List, Optional
 
 try:
-    from fastapi import FastAPI
+    from fastapi import FastAPI, Request
+    from fastapi.concurrency import run_in_threadpool
     from fastapi.staticfiles import StaticFiles
     from fastapi.responses import FileResponse, JSONResponse
     from pydantic import BaseModel
@@ -28,8 +31,8 @@ except ModuleNotFoundError as missing:
 import janitor
 import paths
 from parser import parse_text
-from youtube import resolve_clip, download_audio
-from audio import trim, merge_clips
+from youtube import resolve_clip, download_audio, source_path, UPLOAD_TAG
+from audio import trim, merge_clips, even_out, match_tempo, import_upload, FORMATS
 
 @asynccontextmanager
 async def lifespan(_app):
@@ -77,6 +80,10 @@ class ClipIn(BaseModel):
     title: Optional[str] = None
     start: float = 0
     end: Optional[float] = None
+    # this clip's own level, on top of evening out, in dB
+    gain_db: float = 0
+    # the overlap leading into this clip; None takes the mix's crossfade
+    crossfade_ms: Optional[int] = None
 
 
 class ResolveRequest(BaseModel):
@@ -86,6 +93,12 @@ class ResolveRequest(BaseModel):
 class ExportRequest(BaseModel):
     clips: List[ClipIn]
     crossfade_ms: int = 0
+    fade_in_ms: int = 0
+    fade_out_ms: int = 0
+    normalize: bool = False
+    match_tempo: bool = False
+    format: str = 'mp3'
+    bitrate: str = '192k'
 
 
 @app.post('/api/parse')
@@ -110,47 +123,120 @@ def api_resolve(req: ResolveRequest):
     return {'clips': resolved}
 
 
-def run_export(job_id: str, clips: List[ClipIn], crossfade_ms: int):
-    """Build the mashup, skipping any clip YouTube refuses rather than losing
-    the whole mix. Skipped titles are reported back so the UI can say so."""
-    try:
-        JOBS[job_id]['status'] = 'running'
-        segments = []
-        skipped = []
-        sources = []
-        total = len(clips)
+# Downloads that run at once. Each is mostly waiting on the network, so a few in
+# parallel cut a long mix's wait a lot; more than this is what YouTube notices.
+DOWNLOAD_WORKERS = 3
 
+
+def _clamp(value, low, high):
+    return max(low, min(high, value))
+
+
+def _fetch_sources(job: dict, clips: List[ClipIn]) -> dict:
+    """Download every distinct source, a few at a time. Returns id -> path, or
+    id -> the exception that stopped it."""
+    wanted = {}
+    for c in clips:
+        if c.video_id:
+            wanted.setdefault(c.video_id, c.url)
+    # claimed up front, so a sweep while this job runs leaves its files alone
+    job['sources'] = list(wanted)
+
+    n = len(wanted)
+    results = {}
+    job['step'] = f'Downloading clips (1/{n})'
+    with ThreadPoolExecutor(max_workers=DOWNLOAD_WORKERS) as pool:
+        running = {pool.submit(download_audio, vid, url): vid for vid, url in wanted.items()}
+        for done, future in enumerate(as_completed(running), start=1):
+            vid = running[future]
+            try:
+                results[vid] = future.result()
+            except Exception as e:
+                results[vid] = e
+                traceback.print_exc()
+            job['step'] = f'Downloading clips ({min(done + 1, n)}/{n})'
+    return results
+
+
+def run_export(job_id: str, req: ExportRequest):
+    """Build the mashup, skipping any clip that cannot be fetched rather than
+    losing the whole mix. Skipped titles are reported back so the UI can say so."""
+    job = JOBS[job_id]
+    try:
+        job['status'] = 'running'
+        clips = req.clips
+        total = len(clips)
+        fetched = _fetch_sources(job, clips)
+
+        segments, used, skipped = [], [], []
         for i, c in enumerate(clips):
             label = c.title or c.video_id or f'clip {i+1}'
-            JOBS[job_id]['step'] = f'Downloading "{label}" ({i + 1}/{total})'
+            job['step'] = f'Trimming "{label}" ({i + 1}/{total})'
             try:
-                path = download_audio(c.video_id)
-                sources.append(c.video_id)
-                JOBS[job_id]['step'] = f'Trimming "{label}" ({i + 1}/{total})'
+                path = fetched.get(c.video_id) if c.video_id else RuntimeError('nothing to download')
+                if isinstance(path, Exception):
+                    raise path
                 segments.append(trim(path, c.start, c.end))
+                used.append((i, label, c))
             except Exception as e:
                 skipped.append({'title': label, 'why': str(e)[:160]})
-                JOBS[job_id]['skipped'] = skipped
+                job['skipped'] = skipped
                 traceback.print_exc()
 
         if not segments:
-            reasons = '; '.join(s['why'] for s in skipped) or 'nothing could be downloaded'
+            # the same reason for every clip reads better said once
+            reasons = '; '.join(dict.fromkeys(s['why'] for s in skipped)) or 'nothing could be downloaded'
             raise RuntimeError(reasons)
 
-        JOBS[job_id]['step'] = 'Merging into final mashup...'
-        out_path = merge_clips(segments, crossfade_ms, job_id)
+        tempo = []
+        if req.match_tempo and len(segments) > 1:
+            job['step'] = 'Matching tempo...'
+            segments, ratios = match_tempo(segments)
+            tempo = [{'title': u[1], 'ratio': round(r, 3)} for u, r in zip(used, ratios) if r]
+        if req.normalize:
+            job['step'] = 'Evening out the volume...'
+            segments = even_out(segments)
+        # each clip's own level goes on last, so it is a change from the evened out one
+        segments = [
+            s.apply_gain(_clamp(c.gain_db, -24, 24)) if c.gain_db else s
+            for s, (_, _, c) in zip(segments, used)
+        ]
+
+        job['step'] = 'Merging into final mashup...'
+        crossfades = [
+            _clamp(c.crossfade_ms if c.crossfade_ms is not None else req.crossfade_ms, 0, 12000)
+            for _, _, c in used
+        ]
+        fmt = req.format if req.format in FORMATS else 'mp3'
+        out_path, timeline = merge_clips(
+            segments, crossfades, job_id,
+            fade_in_ms=_clamp(req.fade_in_ms, 0, 20000),
+            fade_out_ms=_clamp(req.fade_out_ms, 0, 20000),
+            fmt=fmt, bitrate=req.bitrate,
+        )
 
         # Fill in the details before flipping to done, so a poll that lands on
         # this instant never sees a finished job with missing metadata.
-        JOBS[job_id]['output'] = out_path
-        JOBS[job_id]['sources'] = sources
-        JOBS[job_id]['used'] = len(segments)
-        JOBS[job_id]['skipped'] = skipped
-        JOBS[job_id]['step'] = 'Done'
-        JOBS[job_id]['status'] = 'done'
+        job['output'] = out_path
+        job['ext'] = fmt
+        job['mime'] = FORMATS[fmt]['mime']
+        job['sources'] = [c.video_id for _, _, c in used]
+        job['used'] = len(segments)
+        job['skipped'] = skipped
+        job['tempo'] = tempo
+        job['timeline'] = [
+            {**spot, 'index': i, 'title': label}
+            for spot, (i, label, _) in zip(timeline, used)
+        ]
+        job['ended'] = time.time()
+        job['step'] = 'Done'
+        job['status'] = 'done'
     except Exception as e:
-        JOBS[job_id]['status'] = 'error'
-        JOBS[job_id]['step'] = f'Error: {e}'
+        # the time lets the sweep keep a failed job long enough for the page to
+        # read why, since it has no file on disk to be judged by
+        job['ended'] = time.time()
+        job['status'] = 'error'
+        job['step'] = f'Error: {e}'
         traceback.print_exc()
     finally:
         # a finished job is a good moment to take the bins out
@@ -164,7 +250,7 @@ def run_export(job_id: str, clips: List[ClipIn], crossfade_ms: int):
 def api_export(req: ExportRequest):
     job_id = str(uuid.uuid4())[:8]
     JOBS[job_id] = {'status': 'queued', 'step': 'Queued'}
-    t = threading.Thread(target=run_export, args=(job_id, req.clips, req.crossfade_ms), daemon=True)
+    t = threading.Thread(target=run_export, args=(job_id, req), daemon=True)
     t.start()
     return {'job_id': job_id}
 
@@ -201,7 +287,65 @@ def api_download(job_id: str, name: str = ''):
     # download attribute, so whatever the cassette is labelled has to come
     # through here or the saved file ends up named after the job id.
     stem = safe_filename(name, f'mashup-{job_id}')
-    return FileResponse(job['output'], filename=f'{stem}.mp3', media_type='audio/mpeg')
+    ext = job.get('ext', 'mp3')
+    return FileResponse(job['output'], filename=f'{stem}.{ext}',
+                        media_type=job.get('mime', 'audio/mpeg'))
+
+
+# Generous for a song, and for a phone video someone wants the sound of. A long
+# DJ set in WAV is the kind of file that hits it.
+MAX_UPLOAD_MB = float(os.environ.get('MAX_UPLOAD_MB') or 300)
+
+
+@app.post('/api/upload')
+async def api_upload(request: Request, name: str = ''):
+    """A file from this computer, sent as the raw request body.
+
+    It becomes an mp3 in the downloads folder under an `up.` id, after which the
+    rest of the app treats it like any downloaded song: trimmed, levelled, swept
+    away by the janitor once it has not been used for a while."""
+    upload_id = f'{UPLOAD_TAG}{uuid.uuid4().hex[:16]}'
+    final = source_path(upload_id)
+    part = final[:-len('.mp3')] + '.part'
+    limit = MAX_UPLOAD_MB * 1024 * 1024
+    size = 0
+    try:
+        with open(part, 'wb') as fh:
+            async for chunk in request.stream():
+                size += len(chunk)
+                if size > limit:
+                    return JSONResponse({'error': f'that file is over {MAX_UPLOAD_MB:g} MB'},
+                                        status_code=413)
+                fh.write(chunk)
+        if not size:
+            return JSONResponse({'error': 'that file is empty'}, status_code=400)
+        duration = await run_in_threadpool(import_upload, part, final)
+    except Exception as e:
+        traceback.print_exc()
+        return JSONResponse({'error': f'could not read that as audio ({str(e)[:120]})'},
+                            status_code=400)
+    finally:
+        try:
+            os.remove(part)
+        except OSError:
+            pass
+
+    title = os.path.splitext(os.path.basename(name or ''))[0].strip()[:120] or 'my file'
+    return {'video_id': upload_id, 'source': 'upload', 'url': None, 'title': title,
+            'thumbnail': None, 'duration': duration, 'start': 0, 'end': duration}
+
+
+@app.get('/api/source/{video_id}/audio')
+def api_source_audio(video_id: str, url: str = ''):
+    """A clip's audio, for previewing anything that is not on YouTube.
+
+    YouTube previews play in YouTube's own player. An upload or a reel has no
+    such player, so the page plays the file this deck would cut from."""
+    try:
+        path = download_audio(video_id, url or None)
+    except Exception as e:
+        return JSONResponse({'error': str(e)[:200]}, status_code=404)
+    return FileResponse(path, media_type='audio/mpeg')
 
 
 def versions() -> dict:

@@ -22,17 +22,27 @@
 
 ### Two input modes
 
-Plain text or a form. Switching modes keeps the current input.
+Plain text or rows. Switching modes keeps the current input, and each lookup
+adds to the track list rather than replacing it.
 
 ```
 Kesariya from 0:45 to 1:10
 then youtu.be/4_eEgJhsBMo from 0:20 to 0:52
+then instagram.com/reel/C8xYz12AbCd
 then Levitating full
 ```
 
 Song names are searched. Links work with or without `https://`, including
-`youtu.be`, `watch?v=`, `/shorts/`, `/live/` and extra parameters. No times, or
-`full`, keeps the whole track.
+`youtu.be`, `watch?v=`, `/shorts/`, `/live/` and extra parameters, plus
+Instagram reels and posts. A link copied at a moment (`?t=90`, `?t=1m30s`)
+starts the clip there unless a range is written out. No times, or `full`, keeps
+the whole track.
+
+### Your own files
+
+**Upload** or drop any audio or video file on the page. ffmpeg reads it into the
+same mp3 a download would be, so it trims, levels and previews like any other
+clip. Uploads stay on the deck as long as downloads do (`DOWNLOAD_TTL_MIN`).
 
 ### Trim and arrange
 
@@ -40,42 +50,45 @@ Song names are searched. Links work with or without `https://`, including
 | --- | --- |
 | **Drag to reorder** | Grab the ridged handle. Arrow keys work too. |
 | **Draggable trim** | Pull either chrome handle, or slide the lit region to move the whole selection. Arrow keys nudge a second, shift jumps five. |
-| **Preview** | Plays the exact slice from YouTube before cutting. |
-| **Live tally** | Clip count and true runtime, with crossfade overlap subtracted. |
-| **Crossfade** | A real fader, off by default. |
-| **Add or remove** | Songs are added from the rack itself. |
+| **Preview** | Plays the exact slice before cutting: in YouTube's player, or the audio itself for reels and files. |
+| **Volume per clip** | -12 to +12 dB on each clip. Double click resets it. |
+| **Blend per join** | Each clip can set its own crossfade from the one before, or follow the mix. |
+| **Live tally** | Clip count and true runtime, with every crossfade overlap subtracted. |
+| **Add or remove** | Songs are added from the track list itself. |
+| **Saved mixes** | Kept on this device (localStorage) with trims, levels and settings, and reopened in one tap. |
 
 ### Export
 
+| | |
+| --- | --- |
+| **Even out volume** | Every clip is brought to the typical clip's average loudness, lifting quiet ones only as far as their peaks allow. On by default. |
+| **Match tempo** | Each clip's tempo is estimated from its beat and nudged (pitch kept) onto the first one's, within 10 percent. Off by default. |
+| **Fade in / out** | On the start and end of the whole mix. |
+| **Format** | MP3, M4A or WAV, at 128 to 320 kbps. |
+
+- Downloads run three at a time, so a long mix waits on the network once, not per song
 - Progress reflects the actual backend steps, not a timer
 - A blocked clip is skipped and named; the rest of the mix still exports
-- The cassette name becomes the downloaded filename
-- The deck shows the song currently playing and marks the handover during a crossfade
-- Each clip's span is drawn on the scrub bar, crossfade zones hatched
-- Share sends the mp3 as a file, so it plays inside WhatsApp
-- Trims can be edited and the mix re-cut
+- The mix's name becomes the downloaded filename
+- The player shows the song currently playing and marks the handover during a crossfade
+- Each clip's span is drawn on the scrub bar from where the server actually put it, crossfade zones hatched
+- Send shares the file itself, so it plays inside WhatsApp
+- Trims can be edited and the mix exported again
+- A failed export says why, rather than reporting a restart
 
-### Background
+### Ready-made mixes
 
-A canvas, not a video: two turning records, drifting stage lights, and a floor
-spectrum driven by the real audio through a Web Audio analyser during playback.
-Pressing anywhere swells the waves at that point. Activity increases while a mix
-is being cut.
-
-### Jukebox
-
-Eight ready mixes. Shuffle play picks one and opens it on the trim screen,
-where it can be edited before cutting.
+Eight ready mixes. Shuffle picks one and loads it into the track list, where it
+can be edited before exporting.
 
 ### Details
 
 - **Sound** on every interaction, chosen semantically, with a mute that persists
 - **Haptics** on phones, using patterns that match what happened
-- **Skeuomorphic throughout**: walnut, brushed steel, brass, screws, LCD, ruled
-  paper, punch holes, a cassette that ejects
-- **Every hover flourish also fires on touch**, since phones have no hover
+- **One screen**: songs come in on the left, are trimmed and ordered on the
+  right, and leave as one file. On a phone the same panels stack in that order
 - **Responsive from 320px up**, verified in a browser
-- **Contrast checked from rendered pixels**, not computed styles
+- **Contrast at WCAG AA** for every text colour on every surface it sits on
 - **Keyboard reachable**: reorder, trim, submit, play, close
 - **Respects reduced motion**
 - **Self-hosted fonts**, so type never waits on a CDN
@@ -97,7 +110,7 @@ where it can be edited before cutting.
             ├─────────────────►│   yt-dlp lookup   ─────┼─────►│   metadata   │
             │◄─────────────────┤   title, length, art   │      │              │
   ┌─────────┴─────────┐        │                        │      │              │
-  │ the rack          │        │                        │      │              │
+  │ track list        │        │                        │      │              │
   │  reorder, trim    │        │                        │      │              │
   └─────────┬─────────┘        │                        │      │              │
             │ POST /api/export │  background thread     │      │              │
@@ -120,9 +133,11 @@ where it can be edited before cutting.
 | --- | --- | --- |
 | `POST` | `/api/parse` | plain text into structured clips |
 | `POST` | `/api/resolve` | look up title, length and artwork |
+| `POST` | `/api/upload?name=` | a file from this computer as the raw body, returns a clip |
+| `GET` | `/api/source/{id}/audio` | a reel's or a file's audio, for previewing |
 | `POST` | `/api/export` | start a cut, returns a job id |
-| `GET` | `/api/export/{id}/status` | progress, and what got skipped |
-| `GET` | `/api/export/{id}/download` | the mp3, named from the cassette |
+| `GET` | `/api/export/{id}/status` | progress, what got skipped, where each clip landed |
+| `GET` | `/api/export/{id}/download` | the mix, named from its title |
 | `POST` | `/api/export/{id}/release` | bin that mix and its sources now |
 | `GET` | `/api/health` | versions, job count, disk usage |
 
@@ -134,13 +149,12 @@ where it can be edited before cutting.
 | `install.sh` / `install.ps1` | one command setup on a machine with nothing installed |
 | `make_icon.py` | draws the app icon for the Mac app, Start menu and Linux launcher |
 | `parser.py` | plain English into clips, regex only |
-| `youtube.py` | yt-dlp lookups and downloads, retries, fallback clients, cookies |
-| `audio.py` | trimming and crossfade merging |
+| `youtube.py` | yt-dlp lookups and downloads (YouTube and Instagram), retries, fallback clients, cookies |
+| `audio.py` | trimming, levelling, tempo matching, crossfade merging, export formats, uploads |
 | `janitor.py` | keeps the scratch folders from growing forever |
 | `paths.py` | picks a writable scratch dir, falls back to temp |
-| `static/js/app.js` | the three steps, the deck, the jukebox |
-| `static/js/sheet.js` | the fill in boxes editor |
-| `static/js/stage.js` | the room behind the console |
+| `static/js/app.js` | adding songs, the track list, the mix, the player, saved mixes |
+| `static/js/sheet.js` | the rows editor |
 | `static/js/dragsort.js` | drag and keyboard reordering |
 | `static/js/presets.js` | the jukebox mixes, ids already resolved |
 
@@ -154,13 +168,13 @@ where it can be edited before cutting.
 | **Audio** | ffmpeg, pydub |
 | **Sourcing** | yt-dlp |
 | **Frontend** | plain ES modules, no framework, no build step |
-| **Type** | Shrikhand, Caveat, Baloo 2, Space Mono, all self hosted |
+| **Type** | Geist and Geist Mono, self hosted |
 | **Sound** | [cuelume](https://cuelume-site.pages.dev) |
 | **Haptics** | [web-haptics](https://haptics.lochie.me) |
 | **Install** | one command, `uv` for Python, static ffmpeg |
 
 No bundler, no node_modules, no CSS framework. The frontend is `index.html`,
-one stylesheet and six ES modules.
+one stylesheet and five ES modules.
 
 ---
 
